@@ -22,6 +22,8 @@
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
 
+#define PLAYER_RADIUS 1.0f
+
 typedef enum {
     MOVE_FRONT = 0,
     MOVE_BACK,
@@ -40,6 +42,80 @@ typedef struct {
 } CameraFPS;
 
 Model mapModel;
+
+bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 triangle0, Vector3 triangle1, Vector3 triangle2) {
+    Vector3 A = Vector3Subtract(triangle0, sphere_center);
+    Vector3 B = Vector3Subtract(triangle1, sphere_center);
+    Vector3 C = Vector3Subtract(triangle2, sphere_center);
+    float rr = sphere_radius * sphere_radius;
+    Vector3 V = Vector3CrossProduct(Vector3Subtract(B, A), Vector3Subtract(C, A));
+    float d = Vector3DotProduct(A, V);
+    float e = Vector3DotProduct(V, V);
+
+    bool sep1 = d*d > rr*e;
+
+    float aa = Vector3DotProduct(A, A);
+    float ab = Vector3DotProduct(A, B);
+    float ac = Vector3DotProduct(A, C);
+    float bb = Vector3DotProduct(B, B);
+    float bc = Vector3DotProduct(B, C);
+    float cc = Vector3DotProduct(C, C);
+
+    bool sep2 = (aa > rr) && (ab > aa) && (ac > aa);
+    bool sep3 = (bb > rr) && (ab > bb) && (bc > bb);
+    bool sep4 = (cc > rr) && (ac > cc) && (bc > cc);
+
+    Vector3 AB = Vector3Subtract(B, A);
+    Vector3 BC = Vector3Subtract(C, B);
+    Vector3 CA = Vector3Subtract(A, C);
+
+    float d1 = ab - aa;
+    float d2 = bc - bb;
+    float d3 = ac - cc;
+
+    float e1 = Vector3DotProduct(AB, AB);
+    float e2 = Vector3DotProduct(BC, BC);
+    float e3 = Vector3DotProduct(CA, CA);
+
+    Vector3 Q1 = Vector3Subtract(Vector3Scale(A, e1), Vector3Scale(AB, d1));
+    Vector3 Q2 = Vector3Subtract(Vector3Scale(B, e2), Vector3Scale(BC, d2));
+    Vector3 Q3 = Vector3Subtract(Vector3Scale(C, e3), Vector3Scale(CA, d3));
+    Vector3 QC = Vector3Subtract(Vector3Scale(C, e1), Q1);
+    Vector3 QA = Vector3Subtract(Vector3Scale(A, e2), Q2);
+    Vector3 QB = Vector3Subtract(Vector3Scale(B, e3), Q3);
+
+    bool sep5 = (Vector3DotProduct(Q1, Q1) > rr * e1 * e1) && (Vector3DotProduct(Q1, QC) > 0);
+    bool sep6 = (Vector3DotProduct(Q2, Q2) > rr * e2 * e2) && (Vector3DotProduct(Q2, QA) > 0);
+    bool sep7 = (Vector3DotProduct(Q3, Q3) > rr * e3 * e3) && (Vector3DotProduct(Q3, QB) > 0);
+
+    bool separated = sep1 || sep2 || sep3 || sep4 || sep5 || sep6 || sep7;
+
+    return !separated;
+}
+
+Vector3 collideWithMap(Vector3 nextPos) {
+    for (int i = 0; i < mapModel.meshCount; i++) {
+        for (int j = 0; j < mapModel.meshes[i].vertexCount; j += 9) {
+            Vector3 normal1 = { mapModel.meshes[i].normals[j], mapModel.meshes[i].normals[j+1], mapModel.meshes[i].normals[j+2]};
+            Vector3 normal2 = { mapModel.meshes[i].normals[j+3], mapModel.meshes[i].normals[j+4], mapModel.meshes[i].normals[j+5]};
+            Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
+
+            Vector3 normal = Vector3Normalize(Vector3Add(normal1, Vector3Add(normal2, normal3)));
+            Vector3 vertex1 = { mapModel.meshes[i].vertices[j], mapModel.meshes[i].vertices[j+1], mapModel.meshes[i].vertices[j+2]};
+            Vector3 vertex2 = { mapModel.meshes[i].vertices[j+3], mapModel.meshes[i].vertices[j+4], mapModel.meshes[i].vertices[j+5]};
+            Vector3 vertex3 = { mapModel.meshes[i].vertices[j+6], mapModel.meshes[i].vertices[j+7], mapModel.meshes[i].vertices[j+8]};
+
+            if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, vertex1, vertex2, vertex3)) {
+                float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
+
+                Vector3 rebound = Vector3Scale(normal, PLAYER_RADIUS - projection);
+                nextPos = Vector3Add(nextPos, rebound);
+            }
+        }
+    }
+
+    return nextPos;
+}
 
 void SetupCameraFPS(CameraFPS *camera)
 {
@@ -98,21 +174,20 @@ void UpdateFPSCamera(CameraFPS *camera) {
 
     Vector3 nextPos = camera->camera.position;
     nextPos.x += deltaX;
-
-    for (int i = 0; i < mapModel.meshCount; i++) {
-        for (int j = 0; j < mapModel.meshes[i].
-    }
-
-    camera->camera.position.x += deltaX;
+    camera->camera.position = collideWithMap(nextPos);
 
     camera->camera.position.y += (sinf(camera->angle.y)*direction[MOVE_FRONT] -
             sinf(camera->angle.y)*direction[MOVE_BACK] +
             1.0f*direction[MOVE_UP] - 1.0f*direction[MOVE_DOWN])/PLAYER_MOVEMENT_SENSITIVITY;
 
-    camera->camera.position.z += (cosf(camera->angle.x)*direction[MOVE_BACK] -
+    float deltaZ = (cosf(camera->angle.x)*direction[MOVE_BACK] -
             cosf(camera->angle.x)*direction[MOVE_FRONT] +
             sinf(camera->angle.x)*direction[MOVE_LEFT] -
             sinf(camera->angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
+
+    nextPos = camera->camera.position;
+    nextPos.z += deltaZ;
+    camera->camera.position = collideWithMap(nextPos);
 
     // Camera orientation calculation
     camera->angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
