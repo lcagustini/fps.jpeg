@@ -4,8 +4,7 @@
 #include "math.h"
 #define RLIGHTS_IMPLEMENTATION
 #include "rlights.h"
-
-#define MAX_COLUMNS 20
+#include "stdio.h"
 
 #define CAMERA_FREE_PANNING_DIVIDER                     5.1f
 
@@ -22,7 +21,7 @@
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
 
-#define PLAYER_RADIUS 1.0f
+#define PLAYER_RADIUS 0.4f
 
 typedef enum {
     MOVE_FRONT = 0,
@@ -94,8 +93,11 @@ bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 
 }
 
 Vector3 collideWithMap(Vector3 nextPos) {
+    int reboundLen = 0;
+    Vector3 rebounds[100][5];
+
     for (int i = 0; i < mapModel.meshCount; i++) {
-        for (int j = 0; j < mapModel.meshes[i].vertexCount; j += 9) {
+        for (int j = 0; j < 3*mapModel.meshes[i].vertexCount; j += 9) {
             Vector3 normal1 = { mapModel.meshes[i].normals[j], mapModel.meshes[i].normals[j+1], mapModel.meshes[i].normals[j+2]};
             Vector3 normal2 = { mapModel.meshes[i].normals[j+3], mapModel.meshes[i].normals[j+4], mapModel.meshes[i].normals[j+5]};
             Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
@@ -108,10 +110,56 @@ Vector3 collideWithMap(Vector3 nextPos) {
             if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, vertex1, vertex2, vertex3)) {
                 float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
 
-                Vector3 rebound = Vector3Scale(normal, PLAYER_RADIUS - projection);
-                nextPos = Vector3Add(nextPos, rebound);
+                rebounds[reboundLen][0] = Vector3Scale(normal, PLAYER_RADIUS - projection);
+                rebounds[reboundLen][1] = vertex1;
+                rebounds[reboundLen][2] = vertex2;
+                rebounds[reboundLen][3] = vertex3;
+                rebounds[reboundLen][4] = normal;
+                reboundLen++;
             }
         }
+    }
+
+    for (int i = 1; i < reboundLen; i++) {
+        for (int j = 0; j < reboundLen - i; j++) {
+            if (Vector3LengthSqr(rebounds[j][0]) > Vector3LengthSqr(rebounds[j + 1][0])) {
+                Vector3 aux[5];
+
+                aux[0] = rebounds[j][0];
+                aux[1] = rebounds[j][1];
+                aux[2] = rebounds[j][2];
+                aux[3] = rebounds[j][3];
+                aux[4] = rebounds[j][4];
+
+                rebounds[j][0] = rebounds[j + 1][0];
+                rebounds[j][1] = rebounds[j + 1][1];
+                rebounds[j][2] = rebounds[j + 1][2];
+                rebounds[j][3] = rebounds[j + 1][3];
+                rebounds[j][4] = rebounds[j + 1][4];
+
+                rebounds[j + 1][0] = aux[0];
+                rebounds[j + 1][1] = aux[1];
+                rebounds[j + 1][2] = aux[2];
+                rebounds[j + 1][3] = aux[3];
+                rebounds[j + 1][4] = aux[4];
+            }
+        }
+    }
+
+    for (int i = 0; i < reboundLen; i++) {
+        //printf("trying %d ->", i);
+        if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
+            float projection = Vector3DotProduct(Vector3Subtract(nextPos, rebounds[i][1]), rebounds[i][4]);
+
+            Vector3 rebound = Vector3Scale(rebounds[i][4], PLAYER_RADIUS - projection);
+            nextPos = Vector3Add(nextPos, rebound);
+
+            //printf("collided, size: %f", Vector3LengthSqr(rebound));
+        }
+        else {
+            //printf("no collision, size: %f", Vector3LengthSqr(rebounds[i][0]));
+        }
+        //printf("\n");
     }
 
     return nextPos;
@@ -146,8 +194,6 @@ void UpdateFPSCamera(CameraFPS *camera) {
     static int swingCounter = 0;    // Used for 1st person swinging movement
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
 
-    // TODO: Compute CAMERA.targetDistance and CAMERA.angle here (?)
-
     // Mouse movement detection
     Vector2 mousePositionDelta = { 0.0f, 0.0f };
     Vector2 mousePosition = GetMousePosition();
@@ -176,10 +222,6 @@ void UpdateFPSCamera(CameraFPS *camera) {
     nextPos.x += deltaX;
     camera->camera.position = collideWithMap(nextPos);
 
-    camera->camera.position.y += (sinf(camera->angle.y)*direction[MOVE_FRONT] -
-            sinf(camera->angle.y)*direction[MOVE_BACK] +
-            1.0f*direction[MOVE_UP] - 1.0f*direction[MOVE_DOWN])/PLAYER_MOVEMENT_SENSITIVITY;
-
     float deltaZ = (cosf(camera->angle.x)*direction[MOVE_BACK] -
             cosf(camera->angle.x)*direction[MOVE_FRONT] +
             sinf(camera->angle.x)*direction[MOVE_LEFT] -
@@ -187,6 +229,12 @@ void UpdateFPSCamera(CameraFPS *camera) {
 
     nextPos = camera->camera.position;
     nextPos.z += deltaZ;
+    camera->camera.position = collideWithMap(nextPos);
+
+    float deltaY = -0.05f;
+
+    nextPos = camera->camera.position;
+    nextPos.y += deltaY;
     camera->camera.position = collideWithMap(nextPos);
 
     // Camera orientation calculation
@@ -211,10 +259,10 @@ void UpdateFPSCamera(CameraFPS *camera) {
 
     // Camera position update
     // NOTE: On CAMERA_FIRST_PERSON player Y-movement is limited to player 'eyes position'
-    camera->camera.position.y = camera->playerEyesPosition - sinf(swingCounter/CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER)/CAMERA_FIRST_PERSON_STEP_DIVIDER;
+    //camera->camera.position.y = camera->playerEyesPosition - sinf(swingCounter/CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER)/CAMERA_FIRST_PERSON_STEP_DIVIDER;
 
-    camera->camera.up.x = sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
-    camera->camera.up.z = -sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
+    //camera->camera.up.x = sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
+    //camera->camera.up.z = -sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
 }
 
 int main(void) {
@@ -229,16 +277,6 @@ int main(void) {
     camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
     camera.fovy = 60.0f;
     camera.projection = CAMERA_PERSPECTIVE;
-
-    float heights[MAX_COLUMNS] = { 0 };
-    Vector3 positions[MAX_COLUMNS] = { 0 };
-    Color colors[MAX_COLUMNS] = { 0 };
-
-    for (int i = 0; i < MAX_COLUMNS; i++) {
-        heights[i] = (float)GetRandomValue(1, 12);
-        positions[i] = (Vector3){ (float)GetRandomValue(-15, 15), heights[i]/2.0f, (float)GetRandomValue(-15, 15) };
-        colors[i] = (Color){ GetRandomValue(20, 255), GetRandomValue(10, 55), 30, 255 };
-    }
 
     SetTargetFPS(60);
 
@@ -269,17 +307,6 @@ int main(void) {
         ClearBackground(RAYWHITE);
 
         BeginMode3D(cameraFPS.camera);
-
-        DrawPlane((Vector3){ 0.0f, 0.0f, 0.0f }, (Vector2){ 32.0f, 32.0f }, LIGHTGRAY);
-        DrawCube((Vector3){ -16.0f, 2.5f, 0.0f }, 1.0f, 5.0f, 32.0f, BLUE);
-        DrawCube((Vector3){ 16.0f, 2.5f, 0.0f }, 1.0f, 5.0f, 32.0f, LIME);
-        DrawCube((Vector3){ 0.0f, 2.5f, 16.0f }, 32.0f, 5.0f, 1.0f, GOLD);
-
-        for (int i = 0; i < MAX_COLUMNS; i++)
-        {
-            DrawCube(positions[i], 2.0f, heights[i], 2.0f, colors[i]);
-            DrawCubeWires(positions[i], 2.0f, heights[i], 2.0f, MAROON);
-        }
 
         DrawCube(otherPlayer, 1.0f, 2.0f, 1.0f, BLACK);
 
