@@ -2,8 +2,6 @@
 #define RAYMATH_HEADER_ONLY
 #include "raymath.h"
 #include "math.h"
-#define RLIGHTS_IMPLEMENTATION
-#include "rlights.h"
 #include "stdio.h"
 
 #define CAMERA_FREE_PANNING_DIVIDER                     5.1f
@@ -288,11 +286,11 @@ int main(void) {
 
     Vector3 otherPlayer = {0};
 
-    Shader shader = LoadShader("lighting.vs", "lighting.fs");
+    Shader shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
-    mapModel = LoadModel("final_map.obj");
+    mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
