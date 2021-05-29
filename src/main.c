@@ -116,7 +116,7 @@ bool sphereCollidesTriangleEx(Vector3 center, float radius, Vector3 p0, Vector3 
             distsq = Vector3DotProduct(d, d);
             if (distsq < best_distsq) {
                 distsq = best_distsq;
-                best_point = point3; 
+                best_point = point3;
                 intersection_vec = d;
             }
         }
@@ -180,7 +180,7 @@ bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 
     return !separated;
 }
 
-Vector3 collideWithMap(Vector3 curPos, Vector3 nextPos) {
+Vector3 CollideWithMap(Vector3 curPos, Vector3 nextPos) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -233,20 +233,20 @@ Vector3 collideWithMap(Vector3 curPos, Vector3 nextPos) {
         }
     }
 
-    printf("reboundLen = %d\n", reboundLen);
+    //printf("reboundLen = %d\n", reboundLen);
     for (int i = 0; i < reboundLen; i++) {
-        printf("trying %d [(%f, %f, %f), (%f, %f, %f), (%f, %f, %f)] ->", i, rebounds[i][1].x, rebounds[i][1].y, rebounds[i][1].z,
-                                                                             rebounds[i][2].x, rebounds[i][2].y, rebounds[i][2].z,
-                                                                             rebounds[i][3].x, rebounds[i][3].y, rebounds[i][3].z);
+        //printf("trying %d [(%f, %f, %f), (%f, %f, %f), (%f, %f, %f)] ->", i, rebounds[i][1].x, rebounds[i][1].y, rebounds[i][1].z,
+                                                                             //rebounds[i][2].x, rebounds[i][2].y, rebounds[i][2].z,
+                                                                             //rebounds[i][3].x, rebounds[i][3].y, rebounds[i][3].z);
         Vector3 penetration;
         if (sphereCollidesTriangleEx(nextPos, PLAYER_RADIUS - 0.01f, rebounds[i][1], rebounds[i][2], rebounds[i][3], &penetration)) {
             nextPos = Vector3Add(nextPos, penetration);
-            printf("collided, size: %f", Vector3Length(penetration));
+            //printf("collided, size: %f", Vector3Length(penetration));
         }
         else {
             //printf("no collision, size: %f", Vector3Length(rebounds[i][0]));
         }
-        printf("\n");
+        //printf("\n");
     }
 
     return nextPos;
@@ -279,6 +279,16 @@ void SetupPlayer(Player *player)
     DisableCursor();
 }
 
+Vector3 CollideWithMapGravity(Vector3 nextPos) {
+    Ray ray = {
+        .position = nextPos,
+        .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
+    };
+    RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
+    if (hit.hit && hit.distance < PLAYER_RADIUS) nextPos = Vector3Add(nextPos, Vector3Scale(hit.normal, PLAYER_RADIUS - hit.distance));
+    return nextPos;
+}
+
 void MovePlayer(Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
 
@@ -308,24 +318,22 @@ void MovePlayer(Player *player) {
 
     Vector3 nextPos = player->position;
     nextPos.x += deltaX;
-    //player->position = collideWithMap(player->position, nextPos);
+    player->position = CollideWithMap(player->position, nextPos);
 
     float deltaZ = (cosf(player->cameraFPS.angle.x)*direction[MOVE_BACK] -
             cosf(player->cameraFPS.angle.x)*direction[MOVE_FRONT] +
             sinf(player->cameraFPS.angle.x)*direction[MOVE_LEFT] -
             sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
 
-    //nextPos = player->position;
+    nextPos = player->position;
     nextPos.z += deltaZ;
-    //player->position = collideWithMap(player->position, nextPos);
+    player->position = CollideWithMap(player->position, nextPos);
 
     float deltaY = -0.05f;
 
-    //nextPos = player->position;
-    //nextPos.y += deltaY;
-    printf("before gravity, pos = (%f,%f,%f)\n", player->position.x, player->position.y, player->position.z);
-    player->position = collideWithMap(player->position, nextPos);
-    printf("after gravity, pos = (%f,%f,%f)\n", player->position.x, player->position.y, player->position.z);
+    nextPos = player->position;
+    nextPos.y += deltaY;
+    player->position = CollideWithMapGravity(nextPos);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
