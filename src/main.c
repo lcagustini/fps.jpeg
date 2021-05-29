@@ -333,7 +333,7 @@ void MovePlayer(Player *player) {
 
     nextPos = player->position;
     nextPos.y += deltaY;
-    player->position = CollideWithMapGravity(nextPos);
+    //player->position = CollideWithMapGravity(nextPos);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -366,7 +366,7 @@ int main(void) {
     SetTargetFPS(60);
 
     Player player = {
-        .position = (Vector3){ 4.0f, 2.5f, 4.0f },
+        .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .moveControl = { 'W', 'S', 'D', 'A', 'E', 'Q' },
     };
