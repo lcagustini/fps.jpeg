@@ -14,7 +14,7 @@
 #define CAMERA_FIRST_PERSON_STEP_DIVIDER                30.0f
 #define CAMERA_FIRST_PERSON_WAVING_DIVIDER              200.0f
 
-#define PLAYER_MOVEMENT_SENSITIVITY                     30.0f
+#define PLAYER_MOVEMENT_SENSITIVITY                     0.4f
 
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
@@ -45,8 +45,6 @@ typedef struct {
     CameraFPS cameraFPS;
     char moveControl[6];
 } Player;
-
-Model mapModel;
 
 Vector3 closestPointOnLineSegment(Vector3 A, Vector3 B, Vector3 Point) {
   Vector3 AB = Vector3Subtract(B, A);
@@ -180,7 +178,7 @@ bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 
     return !separated;
 }
 
-Vector3 CollideWithMap(Vector3 curPos, Vector3 nextPos) {
+Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -279,7 +277,7 @@ void SetupPlayer(Player *player)
     DisableCursor();
 }
 
-Vector3 CollideWithMapGravity(Vector3 nextPos) {
+Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos) {
     Ray ray = {
         .position = nextPos,
         .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
@@ -289,7 +287,7 @@ Vector3 CollideWithMapGravity(Vector3 nextPos) {
     return nextPos;
 }
 
-void MovePlayer(Player *player) {
+void MovePlayer(Model mapModel, Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
 
     // Mouse movement detection
@@ -317,35 +315,35 @@ void MovePlayer(Player *player) {
             cosf(player->cameraFPS.angle.x) * direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
 
     Vector3 nextPos = player->position;
-    nextPos.x += deltaX;
-    player->position = CollideWithMap(player->position, nextPos);
+    nextPos.x += deltaX * GetFrameTime();
+    player->position = CollideWithMap(mapModel, player->position, nextPos);
 
     float deltaZ = (cosf(player->cameraFPS.angle.x)*direction[MOVE_BACK] -
             cosf(player->cameraFPS.angle.x)*direction[MOVE_FRONT] +
             sinf(player->cameraFPS.angle.x)*direction[MOVE_LEFT] -
-            sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
+            sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
 
     nextPos = player->position;
-    nextPos.z += deltaZ;
-    player->position = CollideWithMap(player->position, nextPos);
+    nextPos.z += deltaZ * GetFrameTime();
+    player->position = CollideWithMap(mapModel, player->position, nextPos);
 
     float deltaY = -0.05f;
 
     nextPos = player->position;
-    nextPos.y += deltaY;
-    //player->position = CollideWithMapGravity(nextPos);
+    nextPos.y += deltaY * GetFrameTime();
+    //player->position = CollideWithMapGravity(mapModel, nextPos);
 
     // Camera orientation calculation
-    player->cameraFPS.angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
-    player->cameraFPS.angle.y += (mousePositionDelta.y*-CAMERA_MOUSE_MOVE_SENSITIVITY);
+    player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
+    player->cameraFPS.angle.y += (mousePositionDelta.y * -CAMERA_MOUSE_MOVE_SENSITIVITY);
 
     // Angle clamp
-    if (player->cameraFPS.angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD;
-    else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD;
+    if (player->cameraFPS.angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD;
+    else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD;
 
     // Recalculate camera target considering translation and rotation
     Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance/CAMERA_FREE_PANNING_DIVIDER));
-    Matrix rotation = MatrixRotateXYZ((Vector3){ PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
+    Matrix rotation = MatrixRotateXYZ((Vector3) { PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
     Matrix transform = MatrixMultiply(translation, rotation);
 
     player->target.x = player->position.x - transform.m12;
@@ -379,11 +377,11 @@ int main(void) {
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
-    mapModel = LoadModel("assets/final_map.obj");
+    Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
-        MovePlayer(&player);
+        MovePlayer(mapModel, &player);
 
         otherPlayer.x = -player.position.x;
         otherPlayer.y = player.position.y;
