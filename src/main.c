@@ -21,6 +21,9 @@
 
 #define PLAYER_RADIUS 0.4f
 
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+
 typedef enum {
     MOVE_FRONT = 0,
     MOVE_BACK,
@@ -44,6 +47,88 @@ typedef struct {
 } Player;
 
 Model mapModel;
+
+Vector3 closestPointOnLineSegment(Vector3 A, Vector3 B, Vector3 Point) {
+  Vector3 AB = Vector3Subtract(B, A);
+  float t = Vector3DotProduct(Vector3Subtract(Point, A), AB) / Vector3DotProduct(AB, AB);
+  return Vector3Add(A, Vector3Scale(AB, MIN(MAX(t, 0), 1)));
+}
+
+// https://wickedengine.net/2020/04/26/capsule-collision-detection/
+bool sphereCollidesTriangleEx(Vector3 center, float radius, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 *penetrationVec) {
+    Vector3 N = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(p1, p0), Vector3Subtract(p2, p0))); // plane normal
+    float dist = Vector3DotProduct(Vector3Subtract(center, p0), N); // signed distance between sphere and plane
+    //if(!mesh.is_double_sided() && dist > 0)
+        //return false; // can pass through back side of triangle (optional)
+    if (dist < -radius || dist > radius)
+        return false; // no intersection
+
+    Vector3 point0 = Vector3Subtract(center, Vector3Scale(N, dist)); // projected sphere center on triangle plane
+
+    // Now determine whether point0 is inside all triangle edges:
+    Vector3 c0 = Vector3CrossProduct(Vector3Subtract(point0, p0), Vector3Subtract(p1, p0));
+    Vector3 c1 = Vector3CrossProduct(Vector3Subtract(point0, p1), Vector3Subtract(p2, p1));
+    Vector3 c2 = Vector3CrossProduct(Vector3Subtract(point0, p2), Vector3Subtract(p0, p2));
+    bool inside = Vector3DotProduct(c0, N) <= 0 && Vector3DotProduct(c1, N) <= 0 && Vector3DotProduct(c2, N) <= 0;
+
+    float radiussq = radius * radius; // sphere radius squared
+
+    // Edge 1:
+    Vector3 point1 = closestPointOnLineSegment(p0, p1, center);
+    Vector3 v1 = Vector3Subtract(center, point1);
+    float distsq1 = Vector3DotProduct(v1, v1);
+    bool intersects = distsq1 < radiussq;
+
+    // Edge 2:
+    Vector3 point2 = closestPointOnLineSegment(p1, p2, center);
+    Vector3 v2 = Vector3Subtract(center, point2);
+    float distsq2 = Vector3DotProduct(v2, v2);
+    intersects |= distsq2 < radiussq;
+
+    // Edge 3:
+    Vector3 point3 = closestPointOnLineSegment(p2, p0, center);
+    Vector3 v3 = Vector3Subtract(center, point3);
+    float distsq3 = Vector3DotProduct(v3, v3);
+    intersects |= distsq3 < radiussq;
+
+    if (inside || intersects) {
+        //printf("inside:%d ... intersects:%d\n", inside, intersects);
+        Vector3 best_point = point0;
+        Vector3 intersection_vec;
+
+        if (inside) {
+            intersection_vec = Vector3Subtract(center, point0);
+        } else {
+            Vector3 d = Vector3Subtract(center, point1);
+            float best_distsq = Vector3DotProduct(d, d);
+            best_point = point1;
+            intersection_vec = d;
+
+            d = Vector3Subtract(center, point2);
+            float distsq = Vector3DotProduct(d, d);
+            if (distsq < best_distsq) {
+                distsq = best_distsq;
+                best_point = point2;
+                intersection_vec = d;
+            }
+
+            d = Vector3Subtract(center, point3);
+            distsq = Vector3DotProduct(d, d);
+            if (distsq < best_distsq) {
+                distsq = best_distsq;
+                best_point = point3; 
+                intersection_vec = d;
+            }
+        }
+
+        float len = Vector3Length(intersection_vec);
+        if (penetrationVec) *penetrationVec = Vector3Scale(Vector3Normalize(intersection_vec), radius - len);  // normalize
+
+        return true; // intersection success
+    }
+
+    return false;
+}
 
 bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 triangle0, Vector3 triangle1, Vector3 triangle2) {
     Vector3 A = Vector3Subtract(triangle0, sphere_center);
@@ -95,7 +180,7 @@ bool sphereCollidesTriangle(Vector3 sphere_center, float sphere_radius, Vector3 
     return !separated;
 }
 
-Vector3 collideWithMap(Vector3 nextPos) {
+Vector3 collideWithMap(Vector3 curPos, Vector3 nextPos) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -110,10 +195,9 @@ Vector3 collideWithMap(Vector3 nextPos) {
             Vector3 vertex2 = { mapModel.meshes[i].vertices[j+3], mapModel.meshes[i].vertices[j+4], mapModel.meshes[i].vertices[j+5]};
             Vector3 vertex3 = { mapModel.meshes[i].vertices[j+6], mapModel.meshes[i].vertices[j+7], mapModel.meshes[i].vertices[j+8]};
 
-            if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, vertex1, vertex2, vertex3)) {
-                float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
-
-                rebounds[reboundLen][0] = Vector3Scale(normal, PLAYER_RADIUS - projection);
+            Vector3 penetration;
+            if (sphereCollidesTriangleEx(nextPos, PLAYER_RADIUS, vertex1, vertex2, vertex3, &penetration)) {
+                rebounds[reboundLen][0] = penetration;
                 rebounds[reboundLen][1] = vertex1;
                 rebounds[reboundLen][2] = vertex2;
                 rebounds[reboundLen][3] = vertex3;
@@ -149,20 +233,20 @@ Vector3 collideWithMap(Vector3 nextPos) {
         }
     }
 
+    printf("reboundLen = %d\n", reboundLen);
     for (int i = 0; i < reboundLen; i++) {
-        //printf("trying %d ->", i);
-        if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
-            float projection = Vector3DotProduct(Vector3Subtract(nextPos, rebounds[i][1]), rebounds[i][4]);
-
-            Vector3 rebound = Vector3Scale(rebounds[i][4], PLAYER_RADIUS - projection);
-            nextPos = Vector3Add(nextPos, rebound);
-
-            //printf("collided, size: %f", Vector3LengthSqr(rebound));
+        printf("trying %d [(%f, %f, %f), (%f, %f, %f), (%f, %f, %f)] ->", i, rebounds[i][1].x, rebounds[i][1].y, rebounds[i][1].z,
+                                                                             rebounds[i][2].x, rebounds[i][2].y, rebounds[i][2].z,
+                                                                             rebounds[i][3].x, rebounds[i][3].y, rebounds[i][3].z);
+        Vector3 penetration;
+        if (sphereCollidesTriangleEx(nextPos, PLAYER_RADIUS - 0.01f, rebounds[i][1], rebounds[i][2], rebounds[i][3], &penetration)) {
+            nextPos = Vector3Add(nextPos, penetration);
+            printf("collided, size: %f", Vector3Length(penetration));
         }
         else {
-            //printf("no collision, size: %f", Vector3LengthSqr(rebounds[i][0]));
+            //printf("no collision, size: %f", Vector3Length(rebounds[i][0]));
         }
-        //printf("\n");
+        printf("\n");
     }
 
     return nextPos;
@@ -224,22 +308,24 @@ void MovePlayer(Player *player) {
 
     Vector3 nextPos = player->position;
     nextPos.x += deltaX;
-    player->position = collideWithMap(nextPos);
+    //player->position = collideWithMap(player->position, nextPos);
 
     float deltaZ = (cosf(player->cameraFPS.angle.x)*direction[MOVE_BACK] -
             cosf(player->cameraFPS.angle.x)*direction[MOVE_FRONT] +
             sinf(player->cameraFPS.angle.x)*direction[MOVE_LEFT] -
             sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
 
-    nextPos = player->position;
+    //nextPos = player->position;
     nextPos.z += deltaZ;
-    player->position = collideWithMap(nextPos);
+    //player->position = collideWithMap(player->position, nextPos);
 
     float deltaY = -0.05f;
 
-    nextPos = player->position;
-    nextPos.y += deltaY;
-    player->position = collideWithMap(nextPos);
+    //nextPos = player->position;
+    //nextPos.y += deltaY;
+    printf("before gravity, pos = (%f,%f,%f)\n", player->position.x, player->position.y, player->position.z);
+    player->position = collideWithMap(player->position, nextPos);
+    printf("after gravity, pos = (%f,%f,%f)\n", player->position.x, player->position.y, player->position.z);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -272,7 +358,7 @@ int main(void) {
     SetTargetFPS(60);
 
     Player player = {
-        .position = (Vector3){ 4.0f, 2.0f, 4.0f },
+        .position = (Vector3){ 4.0f, 2.5f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .moveControl = { 'W', 'S', 'D', 'A', 'E', 'Q' },
     };
