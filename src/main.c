@@ -14,7 +14,7 @@
 #define CAMERA_FIRST_PERSON_STEP_DIVIDER                30.0f
 #define CAMERA_FIRST_PERSON_WAVING_DIVIDER              200.0f
 
-#define PLAYER_MOVEMENT_SENSITIVITY                     20.0f
+#define PLAYER_MOVEMENT_SENSITIVITY                     30.0f
 
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
@@ -34,9 +34,14 @@ typedef struct {
     Camera camera;
     Vector2 angle;
     float targetDistance;
-    float playerEyesPosition;
-    char moveControl[6];
 } CameraFPS;
+
+typedef struct {
+    Vector3 position;
+    Vector3 target;
+    CameraFPS cameraFPS;
+    char moveControl[6];
+} Player;
 
 Model mapModel;
 
@@ -163,33 +168,34 @@ Vector3 collideWithMap(Vector3 nextPos) {
     return nextPos;
 }
 
-void SetupCameraFPS(CameraFPS *camera)
+void SetupPlayer(Player *player)
 {
-    SetCameraMode(camera->camera, CAMERA_CUSTOM);
+    player->cameraFPS.camera.position = player->position;
+    player->cameraFPS.camera.target = player->target;
+    player->cameraFPS.camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    player->cameraFPS.camera.fovy = 60.0f;
+    player->cameraFPS.camera.projection = CAMERA_PERSPECTIVE;
 
-    Vector3 v1 = camera->camera.position;
-    Vector3 v2 = camera->camera.target;
+    SetCameraMode(player->cameraFPS.camera, CAMERA_CUSTOM);
+
+    Vector3 v1 = player->cameraFPS.camera.position;
+    Vector3 v2 = player->cameraFPS.camera.target;
 
     float dx = v2.x - v1.x;
     float dy = v2.y - v1.y;
     float dz = v2.z - v1.z;
 
-    camera->targetDistance = sqrtf(dx*dx + dy*dy + dz*dz);   // Distance to target
+    player->cameraFPS.targetDistance = sqrtf(dx*dx + dy*dy + dz*dz);   // Distance to target
 
     // Camera angle calculation
-    camera->angle.x = atan2f(dx, dz);                        // Camera angle in plane XZ (0 aligned with Z, move positive CCW)
-    camera->angle.y = atan2f(dy, sqrtf(dx*dx + dz*dz));      // Camera angle in plane XY (0 aligned with X, move positive CW)
-
-    camera->playerEyesPosition = camera->camera.position.y;          // Init player eyes position to camera Y position
+    player->cameraFPS.angle.x = atan2f(dx, dz);                        // Camera angle in plane XZ (0 aligned with Z, move positive CCW)
+    player->cameraFPS.angle.y = atan2f(dy, sqrtf(dx*dx + dz*dz));      // Camera angle in plane XY (0 aligned with X, move positive CW)
 
     // Lock cursor for first person and third person cameras
     DisableCursor();
-
-    //camera->mode = mode;
 }
 
-void UpdateFPSCamera(CameraFPS *camera) {
-    static int swingCounter = 0;    // Used for 1st person swinging movement
+void MovePlayer(Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
 
     // Mouse movement detection
@@ -199,68 +205,63 @@ void UpdateFPSCamera(CameraFPS *camera) {
 
     // Keys input detection
     // TODO: Input detection is raylib-dependant, it could be moved outside the module
-    bool direction[6] = { IsKeyDown(camera->moveControl[MOVE_FRONT]),
-        IsKeyDown(camera->moveControl[MOVE_BACK]),
-        IsKeyDown(camera->moveControl[MOVE_RIGHT]),
-        IsKeyDown(camera->moveControl[MOVE_LEFT]),
-        IsKeyDown(camera->moveControl[MOVE_UP]),
-        IsKeyDown(camera->moveControl[MOVE_DOWN]) };
+    bool direction[6] = { IsKeyDown(player->moveControl[MOVE_FRONT]),
+        IsKeyDown(player->moveControl[MOVE_BACK]),
+        IsKeyDown(player->moveControl[MOVE_RIGHT]),
+        IsKeyDown(player->moveControl[MOVE_LEFT]),
+        IsKeyDown(player->moveControl[MOVE_UP]),
+        IsKeyDown(player->moveControl[MOVE_DOWN]) };
 
     mousePositionDelta.x = mousePosition.x - previousMousePosition.x;
     mousePositionDelta.y = mousePosition.y - previousMousePosition.y;
 
     previousMousePosition = mousePosition;
 
-    float deltaX = (sinf(camera->angle.x) * direction[MOVE_BACK] -
-            sinf(camera->angle.x) * direction[MOVE_FRONT] -
-            cosf(camera->angle.x) * direction[MOVE_LEFT] +
-            cosf(camera->angle.x) * direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
+    float deltaX = (sinf(player->cameraFPS.angle.x) * direction[MOVE_BACK] -
+            sinf(player->cameraFPS.angle.x) * direction[MOVE_FRONT] -
+            cosf(player->cameraFPS.angle.x) * direction[MOVE_LEFT] +
+            cosf(player->cameraFPS.angle.x) * direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
 
-    Vector3 nextPos = camera->camera.position;
+    Vector3 nextPos = player->position;
     nextPos.x += deltaX;
-    camera->camera.position = collideWithMap(nextPos);
+    player->position = collideWithMap(nextPos);
 
-    float deltaZ = (cosf(camera->angle.x)*direction[MOVE_BACK] -
-            cosf(camera->angle.x)*direction[MOVE_FRONT] +
-            sinf(camera->angle.x)*direction[MOVE_LEFT] -
-            sinf(camera->angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
+    float deltaZ = (cosf(player->cameraFPS.angle.x)*direction[MOVE_BACK] -
+            cosf(player->cameraFPS.angle.x)*direction[MOVE_FRONT] +
+            sinf(player->cameraFPS.angle.x)*direction[MOVE_LEFT] -
+            sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT])/PLAYER_MOVEMENT_SENSITIVITY;
 
-    nextPos = camera->camera.position;
+    nextPos = player->position;
     nextPos.z += deltaZ;
-    camera->camera.position = collideWithMap(nextPos);
+    player->position = collideWithMap(nextPos);
 
     float deltaY = -0.05f;
 
-    nextPos = camera->camera.position;
+    nextPos = player->position;
     nextPos.y += deltaY;
-    camera->camera.position = collideWithMap(nextPos);
+    player->position = collideWithMap(nextPos);
 
     // Camera orientation calculation
-    camera->angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
-    camera->angle.y += (mousePositionDelta.y*-CAMERA_MOUSE_MOVE_SENSITIVITY);
+    player->cameraFPS.angle.x += (mousePositionDelta.x*-CAMERA_MOUSE_MOVE_SENSITIVITY);
+    player->cameraFPS.angle.y += (mousePositionDelta.y*-CAMERA_MOUSE_MOVE_SENSITIVITY);
 
     // Angle clamp
-    if (camera->angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD) camera->angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD;
-    else if (camera->angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD) camera->angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD;
+    if (player->cameraFPS.angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP*DEG2RAD;
+    else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP*DEG2RAD;
 
     // Recalculate camera target considering translation and rotation
-    Matrix translation = MatrixTranslate(0, 0, (camera->targetDistance/CAMERA_FREE_PANNING_DIVIDER));
-    Matrix rotation = MatrixRotateXYZ((Vector3){ PI*2 - camera->angle.y, PI*2 - camera->angle.x, 0 });
+    Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance/CAMERA_FREE_PANNING_DIVIDER));
+    Matrix rotation = MatrixRotateXYZ((Vector3){ PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
     Matrix transform = MatrixMultiply(translation, rotation);
 
-    camera->camera.target.x = camera->camera.position.x - transform.m12;
-    camera->camera.target.y = camera->camera.position.y - transform.m13;
-    camera->camera.target.z = camera->camera.position.z - transform.m14;
+    player->target.x = player->position.x - transform.m12;
+    player->target.y = player->position.y - transform.m13;
+    player->target.z = player->position.z - transform.m14;
+}
 
-    // If movement detected (some key pressed), increase swinging
-    for (int i = 0; i < 6; i++) if (direction[i]) { swingCounter++; break; }
-
-    // Camera position update
-    // NOTE: On CAMERA_FIRST_PERSON player Y-movement is limited to player 'eyes position'
-    //camera->camera.position.y = camera->playerEyesPosition - sinf(swingCounter/CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER)/CAMERA_FIRST_PERSON_STEP_DIVIDER;
-
-    //camera->camera.up.x = sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
-    //camera->camera.up.z = -sinf(swingCounter/(CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER*2))/CAMERA_FIRST_PERSON_WAVING_DIVIDER;
+void UpdateCameraFPS(Player *player) {
+    player->cameraFPS.camera.position = player->position;
+    player->cameraFPS.camera.target = player->target;
 }
 
 int main(void) {
@@ -268,21 +269,15 @@ int main(void) {
     const int screenHeight = 450;
 
     InitWindow(screenWidth, screenHeight, "fps.jpeg");
-
-    Camera camera = { 0 };
-    camera.position = (Vector3){ 4.0f, 2.0f, 4.0f };
-    camera.target = (Vector3){ 0.0f, 1.8f, 0.0f };
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera.fovy = 60.0f;
-    camera.projection = CAMERA_PERSPECTIVE;
-
     SetTargetFPS(60);
 
-    CameraFPS cameraFPS = {
-        .camera = camera,
-        .moveControl = { 'W', 'S', 'D', 'A', 'E', 'Q' }
+    Player player = {
+        .position = (Vector3){ 4.0f, 2.0f, 4.0f },
+        .target = (Vector3){ 0.0f, 1.8f, 0.0f },
+        .moveControl = { 'W', 'S', 'D', 'A', 'E', 'Q' },
     };
-    SetupCameraFPS(&cameraFPS);
+
+    SetupPlayer(&player);
 
     Vector3 otherPlayer = {0};
 
@@ -294,17 +289,19 @@ int main(void) {
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
-        UpdateFPSCamera(&cameraFPS);
+        MovePlayer(&player);
 
-        otherPlayer.x = -cameraFPS.camera.position.x;
-        otherPlayer.y = cameraFPS.camera.position.y;
-        otherPlayer.z = -cameraFPS.camera.position.z;
+        otherPlayer.x = -player.position.x;
+        otherPlayer.y = player.position.y;
+        otherPlayer.z = -player.position.z;
+
+        UpdateCameraFPS(&player);
 
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
 
-        BeginMode3D(cameraFPS.camera);
+        BeginMode3D(player.cameraFPS.camera);
 
         DrawCube(otherPlayer, 1.0f, 2.0f, 1.0f, BLACK);
 
