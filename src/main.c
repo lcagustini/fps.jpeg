@@ -21,6 +21,8 @@
 
 #define PLAYER_RADIUS 0.4f
 
+#define MAX_HEALTH 10.0f
+
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
@@ -29,8 +31,7 @@ typedef enum {
     MOVE_BACK,
     MOVE_RIGHT,
     MOVE_LEFT,
-    MOVE_UP,
-    MOVE_DOWN
+    MOVE_JUMP,
 } CameraMove;
 
 typedef struct {
@@ -40,16 +41,30 @@ typedef struct {
 } CameraFPS;
 
 typedef struct {
+    Model model;
+    float damage;
+} Gun;
+
+typedef struct {
     Vector3 position;
     Vector3 target;
+
+    Gun currentGun;
+
+    float velocity;
+    float health;
+    bool grounded;
+
     CameraFPS cameraFPS;
-    char moveControl[6];
+    char moveControl[5];
 } Player;
 
+Shader shader;
+
 Vector3 closestPointOnLineSegment(Vector3 A, Vector3 B, Vector3 Point) {
-  Vector3 AB = Vector3Subtract(B, A);
-  float t = Vector3DotProduct(Vector3Subtract(Point, A), AB) / Vector3DotProduct(AB, AB);
-  return Vector3Add(A, Vector3Scale(AB, MIN(MAX(t, 0), 1)));
+    Vector3 AB = Vector3Subtract(B, A);
+    float t = Vector3DotProduct(Vector3Subtract(Point, A), AB) / Vector3DotProduct(AB, AB);
+    return Vector3Add(A, Vector3Scale(AB, MIN(MAX(t, 0), 1)));
 }
 
 // Adapted from https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-sphere-intersection
@@ -91,8 +106,8 @@ bool raySphereIntersection(Vector3 orig, Vector3 dir, Vector3 center, float radi
 bool sphereCollidesTriangleEx(Vector3 center, float radius, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 normal, Vector3 *penetrationVec) {
     Vector3 N = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(p1, p0), Vector3Subtract(p2, p0))); // plane normal
     float dist = Vector3DotProduct(Vector3Subtract(center, p0), N); // signed distance between sphere and plane
-    //if (dist > 0)
-        //return false; // can pass through back side of triangle (optional)
+    //if(!mesh.is_double_sided() && dist > 0)
+    //return false; // can pass through back side of triangle (optional)
     if (dist < -radius || dist > radius)
         return false; // no intersection
 
@@ -353,15 +368,15 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
     Vector3 rebounds[100][5];
 
     for (int i = 0; i < mapModel.meshCount; i++) {
-        for (int j = 0; j < 3*mapModel.meshes[i].vertexCount; j += 9) {
-            Vector3 normal1 = { mapModel.meshes[i].normals[j], mapModel.meshes[i].normals[j+1], mapModel.meshes[i].normals[j+2]};
-            Vector3 normal2 = { mapModel.meshes[i].normals[j+3], mapModel.meshes[i].normals[j+4], mapModel.meshes[i].normals[j+5]};
-            Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
-
-            Vector3 normal = Vector3Normalize(Vector3Add(normal1, Vector3Add(normal2, normal3)));
+        for (int j = 0; j < 3 * mapModel.meshes[i].vertexCount; j += 9) {
             Vector3 vertex1 = { mapModel.meshes[i].vertices[j], mapModel.meshes[i].vertices[j+1], mapModel.meshes[i].vertices[j+2]};
             Vector3 vertex2 = { mapModel.meshes[i].vertices[j+3], mapModel.meshes[i].vertices[j+4], mapModel.meshes[i].vertices[j+5]};
             Vector3 vertex3 = { mapModel.meshes[i].vertices[j+6], mapModel.meshes[i].vertices[j+7], mapModel.meshes[i].vertices[j+8]};
+
+            Vector3 normal1 = { mapModel.meshes[i].normals[j], mapModel.meshes[i].normals[j+1], mapModel.meshes[i].normals[j+2]};
+            Vector3 normal2 = { mapModel.meshes[i].normals[j+3], mapModel.meshes[i].normals[j+4], mapModel.meshes[i].normals[j+5]};
+            Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
+            Vector3 normal = Vector3Normalize(Vector3Add(normal1, Vector3Add(normal2, normal3)));
 
             if (Vector3DotProduct(normal, (Vector3){0.0f, 1.0f, 0.0f}) > 0.1f) continue;
 
@@ -428,7 +443,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
         }
     }
 
-    printf("reboundLen = %d\n", reboundLen);
+    //printf("reboundLen = %d\n", reboundLen);
     for (int i = 0; i < reboundLen; i++) {
         //printf("trying %d [(%f, %f, %f), (%f, %f, %f), (%f, %f, %f)] ->", i, rebounds[i][1].x, rebounds[i][1].y, rebounds[i][1].z,
                                                                              //rebounds[i][2].x, rebounds[i][2].y, rebounds[i][2].z,
@@ -460,7 +475,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
 
             //if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.01f) return curPos;
 
-            printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
+            //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
             //printf("collided, size: %f", Vector3Length(penetration));
 
 #if 0
@@ -475,12 +490,18 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
         else {
             //printf("no collision, size: %f", Vector3Length(rebounds[i][0]));
         }
-        printf("\n");
+        //printf("\n");
     }
 
     if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
 
     return nextPos;
+}
+
+void SetupGun(Gun *gun) {
+    for (int i = 0; i < gun->model.materialCount; i++) {
+        gun->model.materials[i].shader = shader;
+    }
 }
 
 void SetupPlayer(Player *player)
@@ -510,13 +531,19 @@ void SetupPlayer(Player *player)
     DisableCursor();
 }
 
-Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos) {
+Vector3 CollideWithMapGravity(Model mapModel, Player *player, Vector3 nextPos) {
     Ray ray = {
         .position = nextPos,
         .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
     };
     RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
-    if (hit.hit) nextPos = Vector3Add(hit.position, Vector3Scale((Vector3) {0.0f, 1.0f, 0.0f}, PLAYER_RADIUS));
+    if (hit.hit && hit.distance < PLAYER_RADIUS) {
+        nextPos = Vector3Add(hit.position, Vector3Scale((Vector3) {0.0f, 1.0f, 0.0f}, PLAYER_RADIUS));
+        printf("grounded! (%f,%f,%f)\n", nextPos.x, nextPos.y, nextPos.z);
+        player->grounded = true;
+        player->velocity = 0;
+    }
+
     return nextPos;
 }
 
@@ -530,41 +557,45 @@ void MovePlayer(Model mapModel, Player *player) {
 
     // Keys input detection
     // TODO: Input detection is raylib-dependant, it could be moved outside the module
-    bool direction[6] = { IsKeyDown(player->moveControl[MOVE_FRONT]),
+    bool inputs[5] = { IsKeyDown(player->moveControl[MOVE_FRONT]),
         IsKeyDown(player->moveControl[MOVE_BACK]),
         IsKeyDown(player->moveControl[MOVE_RIGHT]),
         IsKeyDown(player->moveControl[MOVE_LEFT]),
-        IsKeyDown(player->moveControl[MOVE_UP]),
-        IsKeyDown(player->moveControl[MOVE_DOWN]) };
+        IsKeyDown(player->moveControl[MOVE_JUMP]) };
 
     mousePositionDelta.x = mousePosition.x - previousMousePosition.x;
     mousePositionDelta.y = mousePosition.y - previousMousePosition.y;
 
     previousMousePosition = mousePosition;
 
-    float deltaX = (sinf(player->cameraFPS.angle.x) * direction[MOVE_BACK] -
-            sinf(player->cameraFPS.angle.x) * direction[MOVE_FRONT] -
-            cosf(player->cameraFPS.angle.x) * direction[MOVE_LEFT] +
-            cosf(player->cameraFPS.angle.x) * direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
+    float deltaX = (sinf(player->cameraFPS.angle.x) * inputs[MOVE_BACK] -
+            sinf(player->cameraFPS.angle.x) * inputs[MOVE_FRONT] -
+            cosf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] +
+            cosf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
+
+    float deltaZ = (cosf(player->cameraFPS.angle.x)*inputs[MOVE_BACK] -
+            cosf(player->cameraFPS.angle.x)*inputs[MOVE_FRONT] +
+            sinf(player->cameraFPS.angle.x)*inputs[MOVE_LEFT] -
+            sinf(player->cameraFPS.angle.x)*inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
 
     Vector3 nextPos = player->position;
     nextPos.x += deltaX * GetFrameTime();
-
-    float deltaZ = (cosf(player->cameraFPS.angle.x)*direction[MOVE_BACK] -
-            cosf(player->cameraFPS.angle.x)*direction[MOVE_FRONT] +
-            sinf(player->cameraFPS.angle.x)*direction[MOVE_LEFT] -
-            sinf(player->cameraFPS.angle.x)*direction[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
-
     nextPos.z += deltaZ * GetFrameTime();
+
     Vector3 tmpDir = Vector3Scale(Vector3Normalize(Vector3Subtract(nextPos, player->position)), GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY);
     nextPos = Vector3Add(player->position, tmpDir);
+
     player->position = CollideWithMap(mapModel, player->position, nextPos);
 
-    float deltaY = -2.0f;
-
-    nextPos = player->position;
-    //nextPos.y += deltaY * GetFrameTime();
-    player->position = CollideWithMapGravity(mapModel, nextPos);
+    if (player->grounded && inputs[4]) {
+        player->grounded = false;
+        player->velocity = 3.0f;
+    }
+    
+      player->velocity -= 3.0f * GetFrameTime();
+      nextPos = player->position;
+      nextPos.y += player->velocity * GetFrameTime();
+      player->position = CollideWithMapGravity(mapModel, player, nextPos);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -589,6 +620,13 @@ void UpdateCameraFPS(Player *player) {
     player->cameraFPS.camera.target = player->target;
 }
 
+void UpdateCarriedGun(Gun *gun, Player player) {
+    gun->model.transform = MatrixScale(0.35f, 0.35f, 0.35f);
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(-0.015f, -0.005f, 0.013f));
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixRotateXYZ((Vector3) { player.cameraFPS.angle.y, PI - player.cameraFPS.angle.x, 0 }));
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(player.position.x, player.position.y, player.position.z));
+}
+
 int main(void) {
     const int screenWidth = 800;
     const int screenHeight = 450;
@@ -596,31 +634,31 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "fps.jpeg");
     SetTargetFPS(60);
 
+    shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
+    shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
+    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
+
     Player player = {
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
-        .moveControl = { 'W', 'S', 'D', 'A', 'E', 'Q' },
+        .moveControl = { 'W', 'S', 'D', 'A', ' ' },
+        .health = MAX_HEALTH,
+        .currentGun = {
+            .model = LoadModel("assets/machinegun.obj"),
+            .damage = 0.1f,
+        }
     };
 
     SetupPlayer(&player);
-
-    Vector3 otherPlayer = {0};
-
-    Shader shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
-    shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
-    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
+    SetupGun(&player.currentGun);
 
     Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
         MovePlayer(mapModel, &player);
-
-        otherPlayer.x = -player.position.x;
-        otherPlayer.y = player.position.y;
-        otherPlayer.z = -player.position.z;
-
         UpdateCameraFPS(&player);
+        UpdateCarriedGun(&player.currentGun, player);
 
         BeginDrawing();
 
@@ -628,11 +666,12 @@ int main(void) {
 
         BeginMode3D(player.cameraFPS.camera);
 
-        DrawCube(otherPlayer, 1.0f, 2.0f, 1.0f, BLACK);
-
         DrawModel(mapModel, (Vector3) {0}, 1.0f, WHITE);
+        DrawModel(player.currentGun.model, Vector3Zero(), 1.0f, WHITE);
 
         EndMode3D();
+
+        DrawRectangleGradientH(10, 10, 20 * player.health, 20, RED, GREEN);
 
         EndDrawing();
     }
