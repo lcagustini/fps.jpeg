@@ -13,10 +13,12 @@ uniform int lightsLen;
 
 void main()
 {
+    vec3 result = vec3(0);
+    vec3 objectColor = vec3(colDiffuse.xyz);
+
     for (int i = 0; i < lightsLen; i++) {
         vec3 lightPos = lightsPosition[i];
         vec3 lightColor = lightsColor[i];
-        vec3 objectColor = vec3(colDiffuse.xyz);
 
         // ambient
         float ambientStrength = 0.2;
@@ -35,8 +37,8 @@ void main()
         float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
         vec3 specular = specularStrength * spec * lightColor;
 
-        vec3 result = (ambient + diffuse) * objectColor;
-        finalColor = vec4(result, 1.0);
+        result += ambient + diffuse;
     }
-    //finalColor = vec4(fragNormal, 1.0);
+
+    finalColor = vec4(clamp(result, 0, 1) * objectColor, 1.0);
 }

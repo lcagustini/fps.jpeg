@@ -62,6 +62,16 @@ typedef struct {
     char inputBindings[INPUT_ALL];
 } Player;
 
+typedef struct {
+    int lightsLenLoc;
+    int lightsPositionLoc;
+    int lightsColorLoc;
+
+    Vector3 lightsPosition[10];
+    Vector3 lightsColor[10];
+    int lightsLen;
+} LightSystem;
+
 Shader shader;
 
 Vector3 closestPointOnLineSegment(Vector3 A, Vector3 B, Vector3 Point) {
@@ -629,6 +639,12 @@ void UpdateCarriedGun(Gun *gun, Player player) {
     gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(player.position.x, player.position.y, player.position.z));
 }
 
+void UpdateLights(LightSystem lights) {
+    SetShaderValue(shader, lights.lightsLenLoc, &lights.lightsLen, SHADER_UNIFORM_INT);
+    SetShaderValueV(shader, lights.lightsPositionLoc, &lights.lightsPosition, SHADER_UNIFORM_VEC3, lights.lightsLen);
+    SetShaderValueV(shader, lights.lightsColorLoc, &lights.lightsColor, SHADER_UNIFORM_VEC3, lights.lightsLen);
+}
+
 int main(void) {
     const int screenWidth = 800;
     const int screenHeight = 450;
@@ -651,28 +667,27 @@ int main(void) {
         }
     };
 
+    LightSystem lights = {
+        .lightsLenLoc = GetShaderLocation(shader, "lightsLen"),
+        .lightsPositionLoc = GetShaderLocation(shader, "lightsPosition"),
+        .lightsColorLoc = GetShaderLocation(shader, "lightsColor"),
+
+        .lightsPosition = { (Vector3) { 2.0, 3.0, 2.0 }, (Vector3) { -2.0, 4.0, -3.0 } },
+        .lightsColor = { (Vector3) { 0.6, 0.5, 0.4 }, (Vector3) { 0.5, 0.5, 0.5 } },
+        .lightsLen = 2,
+    };
+
     SetupPlayer(&player);
     SetupGun(&player.currentGun);
 
     Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
-    int lightsLenLoc = GetShaderLocation(shader, "lightsLen");
-    int lightsPositionLoc = GetShaderLocation(shader, "lightsPosition");
-    int lightsColorLoc = GetShaderLocation(shader, "lightsColor");
-
-    Vector3 lightsPosition[10] = { (Vector3) { 2.0, 3.0, 2.0 } };
-    Vector3 lightsColor[10] = { (Vector3) { 0.6, 0.5, 0.4 } };
-    int lightsLen = 1;
-
-    SetShaderValue(shader, lightsLenLoc, &lightsLen, SHADER_UNIFORM_INT);
-    SetShaderValueV(shader, lightsPositionLoc, &lightsPosition, SHADER_UNIFORM_VEC3, lightsLen);
-    SetShaderValueV(shader, lightsColorLoc, &lightsColor, SHADER_UNIFORM_VEC3, lightsLen);
-
     while (!WindowShouldClose()) {
         MovePlayer(mapModel, &player);
         UpdateCameraFPS(&player);
         UpdateCarriedGun(&player.currentGun, player);
+        UpdateLights(lights);
 
         BeginDrawing();
 
