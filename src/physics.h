@@ -1,3 +1,7 @@
+typedef enum {
+  COLLIDE_AND_SLIDE,
+  COLLIDE_AND_BOUNCE,
+} CollisionResponseType;
 
 Vector3 vectorAbs(Vector3 v) {
   return (Vector3) {fabs(v.x), fabs(v.y), fabs(v.z)};
@@ -302,5 +306,113 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 
 	// No separating axis exists, the AABB and triangle intersect.
 	return true;
+}
+
+Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, CollisionResponseType response) {
+    int reboundLen = 0;
+    Vector3 rebounds[100][5];
+
+    for (int i = 0; i < mapModel.meshCount; i++) {
+        for (int j = 0; j < 3 * mapModel.meshes[i].vertexCount; j += 9) {
+            Vector3 vertex1 = { mapModel.meshes[i].vertices[j], mapModel.meshes[i].vertices[j+1], mapModel.meshes[i].vertices[j+2]};
+            Vector3 vertex2 = { mapModel.meshes[i].vertices[j+3], mapModel.meshes[i].vertices[j+4], mapModel.meshes[i].vertices[j+5]};
+            Vector3 vertex3 = { mapModel.meshes[i].vertices[j+6], mapModel.meshes[i].vertices[j+7], mapModel.meshes[i].vertices[j+8]};
+
+            Vector3 normal1 = { mapModel.meshes[i].normals[j], mapModel.meshes[i].normals[j+1], mapModel.meshes[i].normals[j+2]};
+            Vector3 normal2 = { mapModel.meshes[i].normals[j+3], mapModel.meshes[i].normals[j+4], mapModel.meshes[i].normals[j+5]};
+            Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
+            Vector3 normal = Vector3Normalize(Vector3Add(normal1, Vector3Add(normal2, normal3)));
+
+            // TODO: might cause problems when falling close to "boxes"
+            if (Vector3DotProduct(normal, WORLD_UP_VECTOR) > 0.1f) continue;
+
+            Vector3 aabb_min = Vector3Subtract(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+            Vector3 aabb_max = Vector3Add(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+
+            if (triangleAABBIntersects(aabb_min, aabb_max, vertex1, vertex2, vertex3)) {
+#if 0
+                // collision response
+                Vector3 dir = Vector3Subtract(nextPos, curPos);
+                float comp1 = Vector3DotProduct(dir, normal);
+                Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
+                float comp2 = Vector3DotProduct(dir, perp);
+
+                Vector3 rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+
+                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
+                //printf("collided, size: %f", Vector3Length(penetration));
+
+                nextPos = rebound;
+            }
+        }
+    }
+#else
+                float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
+
+                rebounds[reboundLen][0] = Vector3Scale(normal, PLAYER_RADIUS - projection);
+                rebounds[reboundLen][1] = vertex1;
+                rebounds[reboundLen][2] = vertex2;
+                rebounds[reboundLen][3] = vertex3;
+                rebounds[reboundLen][4] = normal;
+                reboundLen++;
+            }
+        }
+    }
+
+    // sort from least penetration to most penetration
+    // might not matter at all
+    for (int i = 1; i < reboundLen; i++) {
+        for (int j = 0; j < reboundLen - i; j++) {
+            if (Vector3LengthSqr(rebounds[j][0]) > Vector3LengthSqr(rebounds[j + 1][0])) {
+                Vector3 aux[5];
+
+                aux[0] = rebounds[j][0];
+                aux[1] = rebounds[j][1];
+                aux[2] = rebounds[j][2];
+                aux[3] = rebounds[j][3];
+                aux[4] = rebounds[j][4];
+
+                rebounds[j][0] = rebounds[j + 1][0];
+                rebounds[j][1] = rebounds[j + 1][1];
+                rebounds[j][2] = rebounds[j + 1][2];
+                rebounds[j][3] = rebounds[j + 1][3];
+                rebounds[j][4] = rebounds[j + 1][4];
+
+                rebounds[j + 1][0] = aux[0];
+                rebounds[j + 1][1] = aux[1];
+                rebounds[j + 1][2] = aux[2];
+                rebounds[j + 1][3] = aux[3];
+                rebounds[j + 1][4] = aux[4];
+            }
+        }
+    }
+
+    for (int i = 0; i < reboundLen; i++) {
+        Vector3 aabb_min = Vector3Subtract(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+        Vector3 aabb_max = Vector3Add(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+
+        Vector3 dir = Vector3Subtract(nextPos, curPos);
+        Vector3 normal = rebounds[i][4];
+        Vector3 rebound = nextPos;
+        if (triangleAABBIntersects(aabb_min, aabb_max, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
+            // collision response
+            if (response == COLLIDE_AND_SLIDE) {
+                float comp1 = Vector3DotProduct(dir, normal);
+                Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
+                float comp2 = Vector3DotProduct(dir, perp);
+
+                rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+            } else if (response == COLLIDE_AND_BOUNCE) {
+                rebound = Vector3Subtract(dir, Vector3Scale(normal, 2 * Vector3DotProduct(dir, normal)));
+            }
+        }
+        nextPos = rebound;
+    }
+#endif
+
+    // hack to prevent going out of bounds by shoving head into corners
+    if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
+
+    return nextPos;
 }
 
