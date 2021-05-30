@@ -19,16 +19,12 @@
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
 
-#define PLAYER_RADIUS 0.4f
-
 #define MAX_HEALTH 10.0f
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define WORLD_UP_VECTOR (Vector3) {0.0f, 1.0f, 0.0f}
-
-#include "physics.h"
 
 typedef enum {
     MOVE_FRONT = 0,
@@ -58,6 +54,8 @@ typedef struct {
     Vector3 position;
     Vector3 target;
 
+    Vector3 size;
+
     Gun currentGun;
 
     float velocity;
@@ -67,6 +65,8 @@ typedef struct {
     CameraFPS cameraFPS;
     char inputBindings[INPUT_ALL];
 } Player;
+
+#include "physics.h"
 
 typedef struct {
     int lightsLenLoc;
@@ -123,9 +123,9 @@ Vector3 CollideWithMapGravity(Model mapModel, Player *player, Vector3 nextPos) {
         .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
     };
     RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
-    if (hit.hit && hit.distance < PLAYER_RADIUS) {
-        nextPos = Vector3Add(hit.position, Vector3Scale((Vector3) {0.0f, 1.0f, 0.0f}, PLAYER_RADIUS));
-        printf("grounded! (%f,%f,%f)\n", nextPos.x, nextPos.y, nextPos.z);
+    if (hit.hit && hit.distance < player->size.y) {
+        nextPos = Vector3Add(hit.position, Vector3Scale((Vector3) {0.0f, 1.0f, 0.0f}, player->size.y));
+        //printf("grounded! (%f,%f,%f)\n", nextPos.x, nextPos.y, nextPos.z);
         player->grounded = true;
         player->velocity = 0;
     }
@@ -174,7 +174,7 @@ void MovePlayer(Model mapModel, Player *player) {
     Vector3 tmpDir = Vector3Scale(Vector3Normalize(Vector3Subtract(nextPos, player->position)), GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY);
     nextPos = Vector3Add(player->position, tmpDir);
 
-    player->position = CollideWithMap(mapModel, player->position, nextPos, COLLIDE_AND_SLIDE);
+    player->position = CollideWithMap(mapModel, player, nextPos, COLLIDE_AND_SLIDE);
 
     if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
         player->grounded = false;
@@ -216,7 +216,7 @@ void UpdatePlayer(Player *player) {
     player->cameraFPS.camera.target = player->target;
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
-    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-PLAYER_RADIUS, -0.05f, PLAYER_RADIUS));
+    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x / 2.0f, -0.05f, player->size.z / 2.0f));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixRotateXYZ((Vector3) { player->cameraFPS.angle.y, PI - player->cameraFPS.angle.x, 0 }));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 }
@@ -238,6 +238,7 @@ int main(void) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
+        .size = (Vector3) { 0.2f, 1.7f, 0.2f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
         .currentGun = {
@@ -249,6 +250,7 @@ int main(void) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
+        .size = (Vector3) { 0.2f, 1.7f, 0.2f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
         .currentGun = {
@@ -298,6 +300,7 @@ int main(void) {
 
         for (int i = 0; i < playerLen; i++) {
             DrawModel(players[i].model, Vector3Zero(), 1.0f, WHITE);
+            DrawCubeWiresV(players[i].position, players[i].size, BLUE);
             DrawModel(players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
         }
 

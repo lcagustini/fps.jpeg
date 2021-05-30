@@ -189,12 +189,12 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 /** The AABB-Triangle test implementation is based on the pseudo-code in
 	Christer Ericson's Real-Time Collision Detection, pp. 169-172. It is
 	practically a standard SAT test. */
-  float tMinX = MIN(a.x, MIN(b.x, c.x)); 
-  float tMinY = MIN(a.y, MIN(b.y, c.y)); 
-  float tMinZ = MIN(a.z, MIN(b.z, c.z)); 
-  float tMaxX = MAX(a.x, MAX(b.x, c.x)); 
-  float tMaxY = MAX(a.y, MAX(b.y, c.y)); 
-  float tMaxZ = MAX(a.z, MAX(b.z, c.z)); 
+  float tMinX = MIN(a.x, MIN(b.x, c.x));
+  float tMinY = MIN(a.y, MIN(b.y, c.y));
+  float tMinZ = MIN(a.z, MIN(b.z, c.z));
+  float tMaxX = MAX(a.x, MAX(b.x, c.x));
+  float tMaxY = MAX(a.y, MAX(b.y, c.y));
+  float tMaxZ = MAX(a.z, MAX(b.z, c.z));
 
 	if (tMinX >= aabb_max.x || tMaxX <= aabb_min.x
 		|| tMinY >= aabb_max.y || tMaxY <= aabb_min.y
@@ -308,7 +308,7 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 	return true;
 }
 
-Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, CollisionResponseType response) {
+Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, CollisionResponseType response) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -326,20 +326,20 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, Collisio
             // TODO: might cause problems when falling close to "boxes"
             if (Vector3DotProduct(normal, WORLD_UP_VECTOR) > 0.1f) continue;
 
-            Vector3 aabb_min = Vector3Subtract(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
-            Vector3 aabb_max = Vector3Add(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+            Vector3 aabb_min = Vector3Subtract(nextPos, player->size);
+            Vector3 aabb_max = Vector3Add(nextPos, player->size);
 
             if (triangleAABBIntersects(aabb_min, aabb_max, vertex1, vertex2, vertex3)) {
 #if 0
                 // collision response
-                Vector3 dir = Vector3Subtract(nextPos, curPos);
+                Vector3 dir = Vector3Subtract(nextPos, player->position);
                 float comp1 = Vector3DotProduct(dir, normal);
                 Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
                 float comp2 = Vector3DotProduct(dir, perp);
 
-                Vector3 rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+                Vector3 rebound = Vector3Add(player->position, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
 
-                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
+                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, player->position)));
                 //printf("collided, size: %f", Vector3Length(penetration));
 
                 nextPos = rebound;
@@ -349,7 +349,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, Collisio
 #else
                 float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
 
-                rebounds[reboundLen][0] = Vector3Scale(normal, PLAYER_RADIUS - projection);
+                rebounds[reboundLen][0] = Vector3Scale(normal, player->size.x - projection);
                 rebounds[reboundLen][1] = vertex1;
                 rebounds[reboundLen][2] = vertex2;
                 rebounds[reboundLen][3] = vertex3;
@@ -388,10 +388,10 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, Collisio
     }
 
     for (int i = 0; i < reboundLen; i++) {
-        Vector3 aabb_min = Vector3Subtract(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
-        Vector3 aabb_max = Vector3Add(nextPos, (Vector3){PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS});
+        Vector3 aabb_min = Vector3Subtract(nextPos, player->size);
+        Vector3 aabb_max = Vector3Add(nextPos, player->size);
 
-        Vector3 dir = Vector3Subtract(nextPos, curPos);
+        Vector3 dir = Vector3Subtract(nextPos, player->position);
         Vector3 normal = rebounds[i][4];
         Vector3 rebound = nextPos;
         if (triangleAABBIntersects(aabb_min, aabb_max, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
@@ -401,7 +401,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, Collisio
                 Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
                 float comp2 = Vector3DotProduct(dir, perp);
 
-                rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+                rebound = Vector3Add(player->position, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
             } else if (response == COLLIDE_AND_BOUNCE) {
                 rebound = Vector3Subtract(dir, Vector3Scale(normal, 2 * Vector3DotProduct(dir, normal)));
             }
@@ -411,7 +411,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, Collisio
 #endif
 
     // hack to prevent going out of bounds by shoving head into corners
-    if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
+    if (Vector3Length(Vector3Subtract(nextPos, player->position)) < 0.004f) return player->position;
 
     return nextPos;
 }
