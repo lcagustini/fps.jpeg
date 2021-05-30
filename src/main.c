@@ -124,7 +124,7 @@ Vector3 CollideWithMapGravity(Model mapModel, Player *player, Vector3 nextPos) {
     };
     RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
     if (hit.hit && hit.distance < player->size.y) {
-        nextPos = Vector3Add(hit.position, Vector3Scale((Vector3) {0.0f, 1.0f, 0.0f}, player->size.y));
+        nextPos = Vector3Add(hit.position, Vector3Scale(WORLD_UP_VECTOR, player->size.y));
         //printf("grounded! (%f,%f,%f)\n", nextPos.x, nextPos.y, nextPos.z);
         player->grounded = true;
         player->velocity = 0;
@@ -216,7 +216,7 @@ void UpdatePlayer(Player *player) {
     player->cameraFPS.camera.target = player->target;
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
-    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x / 2.0f, -0.05f, player->size.z / 2.0f));
+    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, -0.05f, player->size.z));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixRotateXYZ((Vector3) { player->cameraFPS.angle.y, PI - player->cameraFPS.angle.x, 0 }));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 }
@@ -238,7 +238,7 @@ int main(void) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
-        .size = (Vector3) { 0.2f, 1.7f, 0.2f },
+        .size = (Vector3) { 0.15f, 0.75f, 0.15f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
         .currentGun = {
@@ -250,7 +250,7 @@ int main(void) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
-        .size = (Vector3) { 0.2f, 1.7f, 0.2f },
+        .size = (Vector3) { 0.15f, 0.75f, 0.15f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
         .currentGun = {
@@ -285,9 +285,6 @@ int main(void) {
             UpdatePlayer(&players[i]);
         }
 
-        for (int i = 0; i < playerLen; i++) {
-        }
-
         UpdateLights(lights);
 
         BeginDrawing();
@@ -300,7 +297,7 @@ int main(void) {
 
         for (int i = 0; i < playerLen; i++) {
             DrawModel(players[i].model, Vector3Zero(), 1.0f, WHITE);
-            DrawCubeWiresV(players[i].position, players[i].size, BLUE);
+            DrawCubeWires(players[i].position, 2 * players[i].size.x, 2 * players[i].size.y, 2 * players[i].size.z, BLUE);
             DrawModel(players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
         }
 

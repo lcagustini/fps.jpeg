@@ -396,6 +396,7 @@ Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, Collisio
         Vector3 rebound = nextPos;
         if (triangleAABBIntersects(aabb_min, aabb_max, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
             // collision response
+            printf("%f %f %f\n", normal.x, normal.y, normal.z);
             if (response == COLLIDE_AND_SLIDE) {
                 float comp1 = Vector3DotProduct(dir, normal);
                 Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
