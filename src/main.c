@@ -21,6 +21,8 @@
 
 #define PLAYER_RADIUS 0.4f
 
+#define MAX_HEALTH 10.0f
+
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
@@ -39,13 +41,25 @@ typedef struct {
 } CameraFPS;
 
 typedef struct {
+    Model model;
+    float damage;
+} Gun;
+
+typedef struct {
     Vector3 position;
     Vector3 target;
+
+    Gun currentGun;
+
     float velocity;
-    CameraFPS cameraFPS;
+    float health;
     bool grounded;
+
+    CameraFPS cameraFPS;
     char moveControl[5];
 } Player;
+
+Shader shader;
 
 Vector3 closestPointOnLineSegment(Vector3 A, Vector3 B, Vector3 Point) {
     Vector3 AB = Vector3Subtract(B, A);
@@ -194,7 +208,6 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
                 Vector3 center = Vector3Scale(Vector3Add(vertex1, Vector3Add(vertex2, vertex3)), 1.0f/3.0f);
 
                 float projection = fabs(Vector3DotProduct(Vector3Subtract(nextPos, center), normal));
-                printf("%f\n", projection);
                 Vector3 rebound = Vector3Scale(normal, PLAYER_RADIUS - projection);
                 nextPos = Vector3Add(nextPos, rebound);
             }
@@ -203,6 +216,13 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
 
     return nextPos;
 }
+
+void SetupGun(Gun *gun) {
+    for (int i = 0; i < gun->model.materialCount; i++) {
+        gun->model.materials[i].shader = shader;
+    }
+}
+
 
 void SetupPlayer(Player *player)
 {
@@ -313,6 +333,13 @@ void UpdateCameraFPS(Player *player) {
     player->cameraFPS.camera.target = player->target;
 }
 
+void UpdateCarriedGun(Gun *gun, Player player) {
+    gun->model.transform = MatrixScale(0.35f, 0.35f, 0.35f);
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(-0.015f, -0.005f, 0.013f));
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixRotateXYZ((Vector3) { player.cameraFPS.angle.y, PI - player.cameraFPS.angle.x, 0 }));
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(player.position.x, player.position.y, player.position.z));
+}
+
 int main(void) {
     const int screenWidth = 800;
     const int screenHeight = 450;
@@ -320,31 +347,31 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "fps.jpeg");
     SetTargetFPS(60);
 
+    shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
+    shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
+    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
+
     Player player = {
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .moveControl = { 'W', 'S', 'D', 'A', ' ' },
+        .health = MAX_HEALTH,
+        .currentGun = {
+            .model = LoadModel("assets/machinegun.obj"),
+            .damage = 0.1f,
+        }
     };
 
     SetupPlayer(&player);
-
-    Vector3 otherPlayer = {0};
-
-    Shader shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
-    shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
-    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
+    SetupGun(&player.currentGun);
 
     Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
         MovePlayer(mapModel, &player);
-
-        otherPlayer.x = -player.position.x;
-        otherPlayer.y = player.position.y;
-        otherPlayer.z = -player.position.z;
-
         UpdateCameraFPS(&player);
+        UpdateCarriedGun(&player.currentGun, player);
 
         BeginDrawing();
 
@@ -352,11 +379,12 @@ int main(void) {
 
         BeginMode3D(player.cameraFPS.camera);
 
-        DrawCube(otherPlayer, 1.0f, 2.0f, 1.0f, BLACK);
-
         DrawModel(mapModel, (Vector3) {0}, 1.0f, WHITE);
+        DrawModel(player.currentGun.model, Vector3Zero(), 1.0f, WHITE);
 
         EndMode3D();
+
+        DrawRectangleGradientH(10, 10, 20 * player.health, 20, RED, GREEN);
 
         EndDrawing();
     }
