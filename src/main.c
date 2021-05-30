@@ -212,7 +212,7 @@ void UpdatePlayer(Player *player) {
     player->model.transform = MatrixMultiply(player->model.transform, MatrixRotateXYZ((Vector3) { 0, PI - player->cameraFPS.angle.x, 0 }));
     player->model.transform = MatrixMultiply(player->model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 
-    player->cameraFPS.camera.position = player->position;
+    player->cameraFPS.camera.position = Vector3Add(player->position, (Vector3) { 0, 0.9f * player->size.y, 0 });
     player->cameraFPS.camera.target = player->target;
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
