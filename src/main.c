@@ -32,7 +32,10 @@ typedef enum {
     MOVE_RIGHT,
     MOVE_LEFT,
     MOVE_JUMP,
-} CameraMove;
+    SHOOT,
+
+    INPUT_ALL,
+} InputAction;
 
 typedef struct {
     Camera camera;
@@ -56,7 +59,7 @@ typedef struct {
     bool grounded;
 
     CameraFPS cameraFPS;
-    char moveControl[5];
+    char inputBindings[INPUT_ALL];
 } Player;
 
 Shader shader;
@@ -557,11 +560,10 @@ void MovePlayer(Model mapModel, Player *player) {
 
     // Keys input detection
     // TODO: Input detection is raylib-dependant, it could be moved outside the module
-    bool inputs[5] = { IsKeyDown(player->moveControl[MOVE_FRONT]),
-        IsKeyDown(player->moveControl[MOVE_BACK]),
-        IsKeyDown(player->moveControl[MOVE_RIGHT]),
-        IsKeyDown(player->moveControl[MOVE_LEFT]),
-        IsKeyDown(player->moveControl[MOVE_JUMP]) };
+    bool inputs[5] = { IsKeyDown(player->inputBindings[MOVE_FRONT]),
+        IsKeyDown(player->inputBindings[MOVE_BACK]),
+        IsKeyDown(player->inputBindings[MOVE_RIGHT]),
+        IsKeyDown(player->inputBindings[MOVE_LEFT]) };
 
     mousePositionDelta.x = mousePosition.x - previousMousePosition.x;
     mousePositionDelta.y = mousePosition.y - previousMousePosition.y;
@@ -587,7 +589,7 @@ void MovePlayer(Model mapModel, Player *player) {
 
     player->position = CollideWithMap(mapModel, player->position, nextPos);
 
-    if (player->grounded && inputs[4]) {
+    if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
         player->grounded = false;
         player->velocity = 3.0f;
     }
@@ -641,7 +643,7 @@ int main(void) {
     Player player = {
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
-        .moveControl = { 'W', 'S', 'D', 'A', ' ' },
+        .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
         .currentGun = {
             .model = LoadModel("assets/machinegun.obj"),
