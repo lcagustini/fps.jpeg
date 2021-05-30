@@ -193,9 +193,17 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
             Vector3 vertex2 = { mapModel.meshes[i].vertices[j+3], mapModel.meshes[i].vertices[j+4], mapModel.meshes[i].vertices[j+5]};
             Vector3 vertex3 = { mapModel.meshes[i].vertices[j+6], mapModel.meshes[i].vertices[j+7], mapModel.meshes[i].vertices[j+8]};
 
+#if 0
             Vector3 penetration;
             if (sphereCollidesTriangleEx(nextPos, PLAYER_RADIUS, vertex1, vertex2, vertex3, &penetration)) {
-                rebounds[reboundLen][0] = penetration;
+                rebounds[reboundLen][0] = Vector3DotProduct(); //penetration;
+#else
+            if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS * 0.999f, vertex1, vertex2, vertex3)) {
+                float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
+                //rebounds[reboundLen][0] = Vector3Scale(normal, PLAYER_RADIUS - projection);
+                Vector3 dir = Vector3Normalize(Vector3Subtract(curPos, nextPos));
+                rebounds[reboundLen][0].x = Vector3DotProduct(normal, dir);
+#endif
                 rebounds[reboundLen][1] = vertex1;
                 rebounds[reboundLen][2] = vertex2;
                 rebounds[reboundLen][3] = vertex3;
@@ -207,7 +215,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
 
     for (int i = 1; i < reboundLen; i++) {
         for (int j = 0; j < reboundLen - i; j++) {
-            if (Vector3LengthSqr(rebounds[j][0]) > Vector3LengthSqr(rebounds[j + 1][0])) {
+            if (rebounds[j][0].x < rebounds[j + 1][0].x) {
                 Vector3 aux[5];
 
                 aux[0] = rebounds[j][0];
@@ -237,10 +245,21 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos) {
                                                                              //rebounds[i][2].x, rebounds[i][2].y, rebounds[i][2].z,
                                                                              //rebounds[i][3].x, rebounds[i][3].y, rebounds[i][3].z);
         Vector3 penetration;
+#if 0
         if (sphereCollidesTriangleEx(nextPos, PLAYER_RADIUS - 0.01f, rebounds[i][1], rebounds[i][2], rebounds[i][3], &penetration)) {
             nextPos = Vector3Add(nextPos, penetration);
             //printf("collided, size: %f", Vector3Length(penetration));
         }
+#else
+        if (sphereCollidesTriangle(nextPos, PLAYER_RADIUS, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
+            float projection = Vector3DotProduct(Vector3Subtract(nextPos, rebounds[i][1]), rebounds[i][4]);
+
+            Vector3 rebound = Vector3Scale(rebounds[i][4], PLAYER_RADIUS - projection);
+            nextPos = Vector3Add(nextPos, rebound);
+
+            //printf("collided, size: %f", Vector3Length(penetration));
+        }
+#endif
         else {
             //printf("no collision, size: %f", Vector3Length(rebounds[i][0]));
         }
@@ -327,11 +346,11 @@ void MovePlayer(Model mapModel, Player *player) {
     nextPos.z += deltaZ * GetFrameTime();
     player->position = CollideWithMap(mapModel, player->position, nextPos);
 
-    float deltaY = -0.05f;
+    float deltaY = -2.0f;
 
     nextPos = player->position;
     nextPos.y += deltaY * GetFrameTime();
-    //player->position = CollideWithMapGravity(mapModel, nextPos);
+    player->position = CollideWithMapGravity(mapModel, nextPos);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
