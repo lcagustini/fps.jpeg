@@ -14,7 +14,7 @@
 #define CAMERA_FIRST_PERSON_STEP_DIVIDER                30.0f
 #define CAMERA_FIRST_PERSON_WAVING_DIVIDER              200.0f
 
-#define PLAYER_MOVEMENT_SENSITIVITY                     0.4f
+#define PLAYER_MOVEMENT_SENSITIVITY                     0.25f
 
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
@@ -127,16 +127,20 @@ Vector3 CollideWithMapGravity(Model mapModel, Player *player, Vector3 nextPos) {
     return nextPos;
 }
 
+void UpdatePlayer(Model mapModel, Player *player) {
+    player->velocity -= 3.0f * GetFrameTime();
+    Vector3 nextPos = player->position;
+    nextPos.y += player->velocity * GetFrameTime();
+    player->position = CollideWithMapGravity(mapModel, player, nextPos);
+}
+
 void MovePlayer(Model mapModel, Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
 
-    // Mouse movement detection
     Vector2 mousePositionDelta = { 0.0f, 0.0f };
     Vector2 mousePosition = GetMousePosition();
     float mouseWheelMove = GetMouseWheelMove();
 
-    // Keys input detection
-    // TODO: Input detection is raylib-dependant, it could be moved outside the module
     bool inputs[5] = { IsKeyDown(player->inputBindings[MOVE_FRONT]),
         IsKeyDown(player->inputBindings[MOVE_BACK]),
         IsKeyDown(player->inputBindings[MOVE_RIGHT]),
@@ -171,10 +175,7 @@ void MovePlayer(Model mapModel, Player *player) {
         player->velocity = 3.0f;
     }
     
-      player->velocity -= 3.0f * GetFrameTime();
-      nextPos = player->position;
-      nextPos.y += player->velocity * GetFrameTime();
-      player->position = CollideWithMapGravity(mapModel, player, nextPos);
+    UpdatePlayer(mapModel, player);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -200,8 +201,8 @@ void UpdateCameraFPS(Player *player) {
 }
 
 void UpdateCarriedGun(Gun *gun, Player player) {
-    gun->model.transform = MatrixScale(0.35f, 0.35f, 0.35f);
-    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(-0.015f, -0.005f, 0.013f));
+    gun->model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
+    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(-PLAYER_RADIUS, -0.05f, PLAYER_RADIUS));
     gun->model.transform = MatrixMultiply(gun->model.transform, MatrixRotateXYZ((Vector3) { player.cameraFPS.angle.y, PI - player.cameraFPS.angle.x, 0 }));
     gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(player.position.x, player.position.y, player.position.z));
 }
@@ -213,8 +214,8 @@ void UpdateLights(LightSystem lights) {
 }
 
 int main(void) {
-    const int screenWidth = 800;
-    const int screenHeight = 450;
+    const int screenWidth = 1280;
+    const int screenHeight = 720;
 
     InitWindow(screenWidth, screenHeight, "fps.jpeg");
     SetTargetFPS(60);
@@ -223,7 +224,19 @@ int main(void) {
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
-    Player player = {
+    Player players[4];
+    int playerLen = 2;
+    players[0] = (Player) {
+        .position = (Vector3){ 4.0f, 1.0f, 4.0f },
+        .target = (Vector3){ 0.0f, 1.8f, 0.0f },
+        .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
+        .health = MAX_HEALTH,
+        .currentGun = {
+            .model = LoadModel("assets/machinegun.obj"),
+            .damage = 0.1f,
+        }
+    };
+    players[1] = (Player) {
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
@@ -244,30 +257,46 @@ int main(void) {
         .lightsLen = 2,
     };
 
-    SetupPlayer(&player);
-    SetupGun(&player.currentGun);
+    for (int i = 0; i < playerLen; i++) {
+        SetupPlayer(&players[i]);
+        SetupGun(&players[i].currentGun);
+    }
 
     Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
     while (!WindowShouldClose()) {
-        MovePlayer(mapModel, &player);
-        UpdateCameraFPS(&player);
-        UpdateCarriedGun(&player.currentGun, player);
+        for (int i = 0; i < playerLen; i++) {
+            if (i == 0) MovePlayer(mapModel, &players[i]);
+            else UpdatePlayer(mapModel, &players[i]);
+        }
+
+        for (int i = 0; i < playerLen; i++) {
+            UpdateCameraFPS(&players[i]);
+            UpdateCarriedGun(&players[i].currentGun, players[i]);
+        }
+
         UpdateLights(lights);
 
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
 
-        BeginMode3D(player.cameraFPS.camera);
+        BeginMode3D(players[0].cameraFPS.camera);
 
         DrawModel(mapModel, (Vector3) {0}, 1.0f, WHITE);
-        DrawModel(player.currentGun.model, Vector3Zero(), 1.0f, WHITE);
+
+        for (int i = 0; i < playerLen; i++) {
+            DrawCube(players[i].position, 2 * PLAYER_RADIUS, 1.7f, 2 * PLAYER_RADIUS, GRAY);
+            DrawModel(players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
+        }
 
         EndMode3D();
 
-        DrawRectangleGradientH(10, 10, 20 * player.health, 20, RED, GREEN);
+        DrawRectangleGradientH(10, 10, 20 * players[0].health, 20, RED, GREEN);
+
+        DrawLine(GetScreenWidth() / 2 - 6, GetScreenHeight() / 2, GetScreenWidth() / 2 + 5, GetScreenHeight() / 2, MAGENTA);
+        DrawLine(GetScreenWidth() / 2, GetScreenHeight() / 2 - 6, GetScreenWidth() / 2, GetScreenHeight() / 2 + 5, MAGENTA);
 
         EndDrawing();
     }
