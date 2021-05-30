@@ -53,6 +53,8 @@ typedef struct {
 } Gun;
 
 typedef struct {
+    Model model;
+
     Vector3 position;
     Vector3 target;
 
@@ -86,6 +88,10 @@ void SetupGun(Gun *gun) {
 
 void SetupPlayer(Player *player)
 {
+    for (int i = 0; i < player->model.materialCount; i++) {
+        player->model.materials[i].shader = shader;
+    }
+
     player->cameraFPS.camera.position = player->position;
     player->cameraFPS.camera.target = player->target;
     player->cameraFPS.camera.up = WORLD_UP_VECTOR;
@@ -127,7 +133,7 @@ Vector3 CollideWithMapGravity(Model mapModel, Player *player, Vector3 nextPos) {
     return nextPos;
 }
 
-void UpdatePlayer(Model mapModel, Player *player) {
+void ApplyGravity(Model mapModel, Player *player) {
     player->velocity -= 3.0f * GetFrameTime();
     Vector3 nextPos = player->position;
     nextPos.y += player->velocity * GetFrameTime();
@@ -174,8 +180,8 @@ void MovePlayer(Model mapModel, Player *player) {
         player->grounded = false;
         player->velocity = 3.0f;
     }
-    
-    UpdatePlayer(mapModel, player);
+
+    ApplyGravity(mapModel, player);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -195,22 +201,24 @@ void MovePlayer(Model mapModel, Player *player) {
     player->target.z = player->position.z - transform.m14;
 }
 
-void UpdateCameraFPS(Player *player) {
-    player->cameraFPS.camera.position = player->position;
-    player->cameraFPS.camera.target = player->target;
-}
-
-void UpdateCarriedGun(Gun *gun, Player player) {
-    gun->model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
-    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(-PLAYER_RADIUS, -0.05f, PLAYER_RADIUS));
-    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixRotateXYZ((Vector3) { player.cameraFPS.angle.y, PI - player.cameraFPS.angle.x, 0 }));
-    gun->model.transform = MatrixMultiply(gun->model.transform, MatrixTranslate(player.position.x, player.position.y, player.position.z));
-}
-
 void UpdateLights(LightSystem lights) {
     SetShaderValue(shader, lights.lightsLenLoc, &lights.lightsLen, SHADER_UNIFORM_INT);
     SetShaderValueV(shader, lights.lightsPositionLoc, &lights.lightsPosition, SHADER_UNIFORM_VEC3, lights.lightsLen);
     SetShaderValueV(shader, lights.lightsColorLoc, &lights.lightsColor, SHADER_UNIFORM_VEC3, lights.lightsLen);
+}
+
+void UpdatePlayer(Player *player) {
+    player->model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
+    player->model.transform = MatrixMultiply(player->model.transform, MatrixRotateXYZ((Vector3) { 0, PI - player->cameraFPS.angle.x, 0 }));
+    player->model.transform = MatrixMultiply(player->model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
+
+    player->cameraFPS.camera.position = player->position;
+    player->cameraFPS.camera.target = player->target;
+
+    player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
+    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-PLAYER_RADIUS, -0.05f, PLAYER_RADIUS));
+    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixRotateXYZ((Vector3) { player->cameraFPS.angle.y, PI - player->cameraFPS.angle.x, 0 }));
+    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 }
 
 int main(void) {
@@ -227,6 +235,7 @@ int main(void) {
     Player players[4];
     int playerLen = 2;
     players[0] = (Player) {
+        .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
@@ -237,6 +246,7 @@ int main(void) {
         }
     };
     players[1] = (Player) {
+        .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
         .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
@@ -268,12 +278,12 @@ int main(void) {
     while (!WindowShouldClose()) {
         for (int i = 0; i < playerLen; i++) {
             if (i == 0) MovePlayer(mapModel, &players[i]);
-            else UpdatePlayer(mapModel, &players[i]);
+            else ApplyGravity(mapModel, &players[i]);
+
+            UpdatePlayer(&players[i]);
         }
 
         for (int i = 0; i < playerLen; i++) {
-            UpdateCameraFPS(&players[i]);
-            UpdateCarriedGun(&players[i].currentGun, players[i]);
         }
 
         UpdateLights(lights);
@@ -287,7 +297,7 @@ int main(void) {
         DrawModel(mapModel, (Vector3) {0}, 1.0f, WHITE);
 
         for (int i = 0; i < playerLen; i++) {
-            DrawCube(players[i].position, 2 * PLAYER_RADIUS, 1.7f, 2 * PLAYER_RADIUS, GRAY);
+            DrawModel(players[i].model, Vector3Zero(), 1.0f, WHITE);
             DrawModel(players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
         }
 
