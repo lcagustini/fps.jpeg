@@ -657,6 +657,18 @@ int main(void) {
     Model mapModel = LoadModel("assets/final_map.obj");
     mapModel.materials[0].shader = shader;
 
+    int lightsLenLoc = GetShaderLocation(shader, "lightsLen");
+    int lightsPositionLoc = GetShaderLocation(shader, "lightsPosition");
+    int lightsColorLoc = GetShaderLocation(shader, "lightsColor");
+
+    Vector3 lightsPosition[10] = { (Vector3) { 2.0, 3.0, 2.0 } };
+    Vector3 lightsColor[10] = { (Vector3) { 0.6, 0.5, 0.4 } };
+    int lightsLen = 1;
+
+    SetShaderValue(shader, lightsLenLoc, &lightsLen, SHADER_UNIFORM_INT);
+    SetShaderValueV(shader, lightsPositionLoc, &lightsPosition, SHADER_UNIFORM_VEC3, lightsLen);
+    SetShaderValueV(shader, lightsColorLoc, &lightsColor, SHADER_UNIFORM_VEC3, lightsLen);
+
     while (!WindowShouldClose()) {
         MovePlayer(mapModel, &player);
         UpdateCameraFPS(&player);

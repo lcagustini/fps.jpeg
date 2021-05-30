@@ -11,5 +11,8 @@ $(TARGET): $(SRCS) $(LIBDIR)
 	@mkdir -p bin/
 	$(CC) $^ -o $@ $(CFLAGS) $(LIBS)
 
+run: $(TARGET)
+	./bin/main
+
 clean:
 	rm -r bin/
