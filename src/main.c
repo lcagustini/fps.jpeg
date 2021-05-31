@@ -275,9 +275,12 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
     player->cameraFPS.camera.target = Vector3Add(player->cameraFPS.camera.target, cameraOffset);
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
-    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, -0.05f, player->size.z));
+    if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, 0.0f, player->size.z));
+    else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-1.5f * player->size.x, 0.0f, player->size.z));
     Matrix rot = MatrixRotateXYZ((Vector3) { player->cameraFPS.angle.y, PI - player->cameraFPS.angle.x, 0 });
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, rot);
+    if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.85f * player->size.y, 0.0f));
+    else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 
     if (isLocalPlayer && IsKeyPressed(player->inputBindings[SHOOT])) {
