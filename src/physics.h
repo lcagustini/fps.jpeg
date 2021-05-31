@@ -3,6 +3,11 @@ typedef enum {
   COLLIDE_AND_BOUNCE,
 } CollisionResponseType;
 
+typedef enum {
+  HITBOX_AABB,
+  HITBOX_SPHERE,
+} HitboxType;
+
 Vector3 vectorAbs(Vector3 v) {
   return (Vector3) {fabs(v.x), fabs(v.y), fabs(v.z)};
 }
@@ -308,7 +313,8 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 	return true;
 }
 
-Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, CollisionResponseType response) {
+// TODO: use velocity also for other ResponseTypes?, currently only working for SLIDE
+Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxType hitbox, float radius, CollisionResponseType response, Vector3 *velocity) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -326,20 +332,26 @@ Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, Collisio
             // TODO: might cause problems when falling close to "boxes"
             if (Vector3DotProduct(normal, WORLD_UP_VECTOR) > 0.1f) continue;
 
-            Vector3 aabb_min = Vector3Subtract(nextPos, player->size);
-            Vector3 aabb_max = Vector3Add(nextPos, player->size);
+            bool intersects = false;
+            if (hitbox == HITBOX_AABB) {
+                Vector3 aabb_radius = (Vector3) {radius, radius, radius};
+                Vector3 aabb_min = Vector3Subtract(nextPos, aabb_radius);
+                Vector3 aabb_max = Vector3Add(nextPos, aabb_radius);
 
-            if (triangleAABBIntersects(aabb_min, aabb_max, vertex1, vertex2, vertex3)) {
+                intersects = triangleAABBIntersects(aabb_min, aabb_max, vertex1, vertex2, vertex3);
+            } else if (hitbox == HITBOX_SPHERE) {
+                intersects = sphereCollidesTriangle(nextPos, radius, vertex1, vertex2, vertex3);
+            }
 #if 0
                 // collision response
-                Vector3 dir = Vector3Subtract(nextPos, player->position);
+                Vector3 dir = Vector3Subtract(nextPos, curPos);
                 float comp1 = Vector3DotProduct(dir, normal);
                 Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
                 float comp2 = Vector3DotProduct(dir, perp);
 
-                Vector3 rebound = Vector3Add(player->position, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+                Vector3 rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
 
-                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, player->position)));
+                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
                 //printf("collided, size: %f", Vector3Length(penetration));
 
                 nextPos = rebound;
@@ -347,9 +359,10 @@ Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, Collisio
         }
     }
 #else
+            if (intersects) {
                 float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
 
-                rebounds[reboundLen][0] = Vector3Scale(normal, player->size.x - projection);
+                rebounds[reboundLen][0] = Vector3Scale(normal, radius - projection);
                 rebounds[reboundLen][1] = vertex1;
                 rebounds[reboundLen][2] = vertex2;
                 rebounds[reboundLen][3] = vertex3;
@@ -388,23 +401,34 @@ Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, Collisio
     }
 
     for (int i = 0; i < reboundLen; i++) {
-        Vector3 aabb_min = Vector3Subtract(nextPos, player->size);
-        Vector3 aabb_max = Vector3Add(nextPos, player->size);
+        bool intersects = false;
+        if (hitbox == HITBOX_AABB) {
+            Vector3 aabb_radius = (Vector3) {radius, radius, radius};
+            Vector3 aabb_min = Vector3Subtract(nextPos, aabb_radius);
+            Vector3 aabb_max = Vector3Add(nextPos, aabb_radius);
 
-        Vector3 dir = Vector3Subtract(nextPos, player->position);
+            intersects = triangleAABBIntersects(aabb_min, aabb_max, rebounds[i][1], rebounds[i][2], rebounds[i][3]);
+        } else if (hitbox == HITBOX_SPHERE) {
+            intersects = sphereCollidesTriangle(nextPos, radius, rebounds[i][1], rebounds[i][2], rebounds[i][3]);
+        }
+
+        Vector3 dir = Vector3Subtract(nextPos, curPos);
         Vector3 normal = rebounds[i][4];
         Vector3 rebound = nextPos;
-        if (triangleAABBIntersects(aabb_min, aabb_max, rebounds[i][1], rebounds[i][2], rebounds[i][3])) {
+        if (intersects) {
             // collision response
-            printf("%f %f %f\n", normal.x, normal.y, normal.z);
+            //printf("%f %f %f\n", normal.x, normal.y, normal.z);
             if (response == COLLIDE_AND_SLIDE) {
                 float comp1 = Vector3DotProduct(dir, normal);
                 Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
                 float comp2 = Vector3DotProduct(dir, perp);
 
-                rebound = Vector3Add(player->position, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
+                rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
             } else if (response == COLLIDE_AND_BOUNCE) {
-                rebound = Vector3Subtract(dir, Vector3Scale(normal, 2 * Vector3DotProduct(dir, normal)));
+                assert(velocity);
+                rebound = Vector3Subtract(*velocity, Vector3Scale(normal, 2 * Vector3DotProduct(*velocity, normal)));
+                *velocity = rebound;
+                rebound = Vector3Add(curPos, Vector3Scale(rebound, GetFrameTime()));
             }
         }
         nextPos = rebound;
@@ -412,7 +436,7 @@ Vector3 CollideWithMap(Model mapModel, Player *player, Vector3 nextPos, Collisio
 #endif
 
     // hack to prevent going out of bounds by shoving head into corners
-    if (Vector3Length(Vector3Subtract(nextPos, player->position)) < 0.004f) return player->position;
+    if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
 
     return nextPos;
 }
