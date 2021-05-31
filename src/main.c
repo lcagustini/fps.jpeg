@@ -5,8 +5,6 @@
 #include "stdio.h"
 #include "assert.h"
 
-#define CAMERA_FREE_PANNING_DIVIDER                     5.1f
-
 #define CAMERA_FIRST_PERSON_FOCUS_DISTANCE              25.0f
 #define CAMERA_FIRST_PERSON_MIN_CLAMP                   89.0f
 #define CAMERA_FIRST_PERSON_MAX_CLAMP                  -89.0f
@@ -138,8 +136,6 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
         bool grounded = false;
         ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
 
-        printf("proj pos: %f %f %f\n", projectiles->position[i].x, projectiles->position[i].y, projectiles->position[i].z);
-
         if (grounded) {
           DeleteProjectile(projectiles, i--);
         }
@@ -166,9 +162,9 @@ void SetupPlayer(Player *player)
     }
 
     player->cameraFPS.camera.position = player->position;
-    player->cameraFPS.camera.target = (Vector3) {0.0f, 1.8f, 0.0f};
+    player->cameraFPS.camera.target = Vector3Add(player->position, (Vector3){0.0f, 0.0f, 1.0f});
     player->cameraFPS.camera.up = WORLD_UP_VECTOR;
-    player->cameraFPS.camera.fovy = 60.0f;
+    player->cameraFPS.camera.fovy = 75.0f;
     player->cameraFPS.camera.projection = CAMERA_PERSPECTIVE;
 
     SetCameraMode(player->cameraFPS.camera, CAMERA_CUSTOM);
@@ -250,10 +246,11 @@ void MovePlayer(Model mapModel, Player *player) {
     else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD;
 
     // Recalculate camera target considering translation and rotation
-    Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance/CAMERA_FREE_PANNING_DIVIDER));
+    Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance));
     Matrix rotation = MatrixRotateXYZ((Vector3) { PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
     Matrix transform = MatrixMultiply(translation, rotation);
 
+    // TODO: investigate
     player->cameraFPS.camera.target.x = player->position.x - transform.m12;
     player->cameraFPS.camera.target.y = player->position.y - transform.m13;
     player->cameraFPS.camera.target.z = player->position.z - transform.m14;
@@ -273,6 +270,10 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
     Vector3 cameraOffset = { 0, 0.9f * player->size.y, 0 };
     player->cameraFPS.camera.position = Vector3Add(player->position, cameraOffset);
     player->cameraFPS.camera.target = Vector3Add(player->cameraFPS.camera.target, cameraOffset);
+    Vector3 tmp = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
+    if (isLocalPlayer) {
+        printf("target dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
+    }
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
     if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, 0.0f, player->size.z));
@@ -283,11 +284,17 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
     else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 
+    tmp = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
+    if (isLocalPlayer) {
+        printf("target2 dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
+    }
+
     if (isLocalPlayer && IsKeyPressed(player->inputBindings[SHOOT])) {
-        Vector3 dir = Vector3Normalize(Vector3Transform((Vector3){0.0f,0.0f,1.0f}, rot));
+        Vector3 dir = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
         float projSpeed = 12.0f;
         float radius = 0.1f;
         AddProjectile(projectiles, player->cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
+        printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
     }
 }
 
