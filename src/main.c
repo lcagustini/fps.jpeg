@@ -59,8 +59,6 @@ typedef struct {
     Vector3 position;
     Vector3 velocity;
 
-    Vector3 target;
-
     Vector3 size;
 
     Gun currentGun;
@@ -140,6 +138,8 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
         bool grounded = false;
         ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
 
+        printf("proj pos: %f %f %f\n", projectiles->position[i].x, projectiles->position[i].y, projectiles->position[i].z);
+
         if (grounded) {
           DeleteProjectile(projectiles, i--);
         }
@@ -166,7 +166,7 @@ void SetupPlayer(Player *player)
     }
 
     player->cameraFPS.camera.position = player->position;
-    player->cameraFPS.camera.target = player->target;
+    player->cameraFPS.camera.target = (Vector3) {0.0f, 1.8f, 0.0f};
     player->cameraFPS.camera.up = WORLD_UP_VECTOR;
     player->cameraFPS.camera.fovy = 60.0f;
     player->cameraFPS.camera.projection = CAMERA_PERSPECTIVE;
@@ -254,9 +254,9 @@ void MovePlayer(Model mapModel, Player *player) {
     Matrix rotation = MatrixRotateXYZ((Vector3) { PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
     Matrix transform = MatrixMultiply(translation, rotation);
 
-    player->target.x = player->position.x - transform.m12;
-    player->target.y = player->position.y - transform.m13;
-    player->target.z = player->position.z - transform.m14;
+    player->cameraFPS.camera.target.x = player->position.x - transform.m12;
+    player->cameraFPS.camera.target.y = player->position.y - transform.m13;
+    player->cameraFPS.camera.target.z = player->position.z - transform.m14;
 }
 
 void UpdateLights(LightSystem lights) {
@@ -270,8 +270,9 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
     player->model.transform = MatrixMultiply(player->model.transform, MatrixRotateXYZ((Vector3) { 0, PI - player->cameraFPS.angle.x, 0 }));
     player->model.transform = MatrixMultiply(player->model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
 
-    player->cameraFPS.camera.position = Vector3Add(player->position, (Vector3) { 0, 0.9f * player->size.y, 0 });
-    player->cameraFPS.camera.target = player->target;
+    Vector3 cameraOffset = { 0, 0.9f * player->size.y, 0 };
+    player->cameraFPS.camera.position = Vector3Add(player->position, cameraOffset);
+    player->cameraFPS.camera.target = Vector3Add(player->cameraFPS.camera.target, cameraOffset);
 
     player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, -0.05f, player->size.z));
@@ -283,7 +284,7 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
         Vector3 dir = Vector3Normalize(Vector3Transform((Vector3){0.0f,0.0f,1.0f}, rot));
         float projSpeed = 12.0f;
         float radius = 0.1f;
-        AddProjectile(projectiles, player->position, Vector3Scale(dir, projSpeed), radius);
+        AddProjectile(projectiles, player->cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
     }
 }
 
@@ -303,7 +304,6 @@ int main(void) {
     players[0] = (Player) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-        .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .size = (Vector3) { 0.15f, 0.75f, 0.15f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
@@ -315,7 +315,6 @@ int main(void) {
     players[1] = (Player) {
         .model = LoadModel("assets/human.obj"),
         .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-        .target = (Vector3){ 0.0f, 1.8f, 0.0f },
         .size = (Vector3) { 0.15f, 0.75f, 0.15f },
         .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
         .health = MAX_HEALTH,
