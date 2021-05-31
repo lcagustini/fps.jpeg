@@ -130,7 +130,12 @@ void DeleteProjectile(Projectiles *projectiles, int index) {
 
 void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
+        // FIXME: dirty hack, we should fix how we add Y to position
+        float tmpVelY = projectiles->velocity[i].y;
+        projectiles->velocity[i].y = 0.0f;
         Vector3 nextPos = Vector3Add(projectiles->position[i], Vector3Scale(projectiles->velocity[i], GetFrameTime()));
+        projectiles->velocity[i].y = tmpVelY;
+
         projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
         
         bool grounded = false;
@@ -283,11 +288,6 @@ void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) 
     if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.85f * player->size.y, 0.0f));
     else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
     player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
-
-    tmp = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
-    if (isLocalPlayer) {
-        printf("target2 dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
-    }
 
     if (isLocalPlayer && IsKeyPressed(player->inputBindings[SHOOT])) {
         Vector3 dir = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
