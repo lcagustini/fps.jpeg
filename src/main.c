@@ -7,6 +7,11 @@
 #include "time.h"
 #include <sys/time.h>
 
+#include <sys/socket.h>
+#include <netdb.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+
 #define CAMERA_FIRST_PERSON_FOCUS_DISTANCE              25.0f
 #define CAMERA_FIRST_PERSON_MIN_CLAMP                   89.0f
 #define CAMERA_FIRST_PERSON_MAX_CLAMP                  -89.0f
@@ -400,6 +405,21 @@ int main(void) {
     for (int i = 0; i < world.playersLen; i++) {
         SetupPlayer(&world.players[i]);
         SetupGun(&world.players[i].currentGun);
+    }
+
+    int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    fcntl(socket_fd, F_SETFL, O_NONBLOCK);
+    struct sockaddr_in server_address = {0};
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(20585);
+    server_address.sin_addr.s_addr = INADDR_ANY;
+    struct sockaddr *addr = (struct sockaddr *) &server_address;
+
+    if (bind(socket_fd, addr, sizeof(server_address)) == -1) {
+        fprintf(stderr, "ERROR: Could not bind file descriptor to socket.\n");
+    }
+    else {
+        fprintf(stderr, "Could bind file descriptor to socket.\n");
     }
 
     while (!WindowShouldClose()) {
