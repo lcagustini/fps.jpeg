@@ -167,7 +167,7 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
 void DrawProjectiles(Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
         // TODO: maybe use DrawSphereEx to draw a sphere with less slices if performance becomes a concern
-        DrawSphere(projectiles->position[i], projectiles->radius[i], RED);
+        DrawSphere(projectiles->position[i], projectiles->radius[i], YELLOW);
     }
 }
 
@@ -299,9 +299,6 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
     players[index].cameraFPS.camera.position = Vector3Add(players[index].position, cameraOffset);
     players[index].cameraFPS.camera.target = Vector3Add(players[index].cameraFPS.camera.target, cameraOffset);
     Vector3 tmp = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
-    //if (isLocalPlayer) {
-        //printf("target dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
-    //}
 
     players[index].currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
     if (isLocalPlayer) players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(-players[index].size.x, 0.0f, players[index].size.z));
@@ -315,13 +312,14 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
     if (isLocalPlayer && IsKeyPressed(players[index].inputBindings[SHOOT])) {
         Vector3 dir = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
         switch (players[index].currentGun.type) {
-            case GUN_GRENADE:
+            case GUN_GRENADE: {
                 float projSpeed = 12.0f;
                 float radius = 0.1f;
                 AddProjectile(projectiles, players[index].cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
                 //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
                 break;
-            case GUN_BULLET:
+            }
+            case GUN_BULLET: {
                 Ray shootRay = { .position = players[index].cameraFPS.camera.position, .direction = dir };
 
                 for (int i = 0; i < playersLen; i++) {
@@ -339,6 +337,7 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
                     }
                 }
                 break;
+            }
         }
     }
 }
@@ -353,9 +352,10 @@ int main(void) {
     shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
+    shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
     World world = {
-        .map = LoadModel("assets/final_map.obj"),
+        .map = LoadModel("assets/map2.obj"),
         .players = {
             {
                 .model = LoadModel("assets/human.obj"),
@@ -365,7 +365,7 @@ int main(void) {
                 .health = MAX_HEALTH,
                 .currentGun = {
                     .model = LoadModel("assets/machinegun.obj"),
-                    .type = GUN_BULLET,
+                    .type = GUN_GRENADE,
                     .damage = 0.1f,
                 }
             },
@@ -418,7 +418,14 @@ int main(void) {
 
         BeginMode3D(world.players[LOCAL_PLAYER_INDEX].cameraFPS.camera);
 
+        // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
+        int isWallLoc = GetShaderLocation(shader, "isWall");
+        int isWall = 1;
+
+        SetShaderValue(shader, isWallLoc, &isWall, SHADER_UNIFORM_INT);
         DrawModel(world.map, (Vector3) {0}, 1.0f, WHITE);
+        isWall = 0;
+        SetShaderValue(shader, isWallLoc, &isWall, SHADER_UNIFORM_INT);
 
         for (int i = 0; i < world.playersLen; i++) {
             DrawModel(world.players[i].model, Vector3Zero(), 1.0f, WHITE);
