@@ -4,6 +4,8 @@
 #include "math.h"
 #include "stdio.h"
 #include "assert.h"
+#include "time.h"
+#include <sys/time.h>
 
 #define CAMERA_FIRST_PERSON_FOCUS_DISTANCE              25.0f
 #define CAMERA_FIRST_PERSON_MIN_CLAMP                   89.0f
@@ -418,14 +420,20 @@ int main(void) {
 
         BeginMode3D(world.players[LOCAL_PLAYER_INDEX].cameraFPS.camera);
 
-        // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
-        int isWallLoc = GetShaderLocation(shader, "isWall");
-        int isWall = 1;
+        int timeLoc = GetShaderLocation(shader, "time");
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        float timestamp = (float) tv.tv_usec / 100000; // calculate milliseconds
+        SetShaderValue(shader, timeLoc, &timestamp, SHADER_UNIFORM_FLOAT);
 
-        SetShaderValue(shader, isWallLoc, &isWall, SHADER_UNIFORM_INT);
+        // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
+        int isMapLoc = GetShaderLocation(shader, "isMap");
+        int isMap = 1;
+
+        SetShaderValue(shader, isMapLoc, &isMap, SHADER_UNIFORM_INT);
         DrawModel(world.map, (Vector3) {0}, 1.0f, WHITE);
-        isWall = 0;
-        SetShaderValue(shader, isWallLoc, &isWall, SHADER_UNIFORM_INT);
+        isMap = 0;
+        SetShaderValue(shader, isMapLoc, &isMap, SHADER_UNIFORM_INT);
 
         for (int i = 0; i < world.playersLen; i++) {
             DrawModel(world.players[i].model, Vector3Zero(), 1.0f, WHITE);
