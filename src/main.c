@@ -46,8 +46,14 @@ typedef struct {
     float targetDistance;
 } CameraFPS;
 
+typedef enum {
+    GUN_GRENADE,
+    GUN_BULLET
+} GunType;
+
 typedef struct {
     Model model;
+    GunType type;
     float damage;
 } Gun;
 
@@ -84,6 +90,17 @@ typedef struct {
     Vector3 lightsColor[10];
     int lightsLen;
 } LightSystem;
+
+typedef struct {
+    Model map;
+
+    Player players[4];
+    int playersLen;
+
+    Projectiles projectiles;
+
+    LightSystem lights;
+} World;
 
 Shader shader;
 
@@ -137,7 +154,7 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
         projectiles->velocity[i].y = tmpVelY;
 
         projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
-        
+
         bool grounded = false;
         ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
 
@@ -158,6 +175,10 @@ void SetupGun(Gun *gun) {
     for (int i = 0; i < gun->model.materialCount; i++) {
         gun->model.materials[i].shader = shader;
     }
+}
+
+void SetupWorld(World *world) {
+    world->map.materials[0].shader = shader;
 }
 
 void SetupPlayer(Player *player)
@@ -267,124 +288,149 @@ void UpdateLights(LightSystem lights) {
     SetShaderValueV(shader, lights.lightsColorLoc, &lights.lightsColor, SHADER_UNIFORM_VEC3, lights.lightsLen);
 }
 
-void UpdatePlayer(Player *player, Projectiles *projectiles, bool isLocalPlayer) {
-    player->model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
-    player->model.transform = MatrixMultiply(player->model.transform, MatrixRotateXYZ((Vector3) { 0, PI - player->cameraFPS.angle.x, 0 }));
-    player->model.transform = MatrixMultiply(player->model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
+void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int playersLen, Model mapModel) {
+    bool isLocalPlayer = index == LOCAL_PLAYER_INDEX;
 
-    Vector3 cameraOffset = { 0, 0.9f * player->size.y, 0 };
-    player->cameraFPS.camera.position = Vector3Add(player->position, cameraOffset);
-    player->cameraFPS.camera.target = Vector3Add(player->cameraFPS.camera.target, cameraOffset);
-    Vector3 tmp = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
-    if (isLocalPlayer) {
-        printf("target dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
-    }
+    players[index].model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
+    players[index].model.transform = MatrixMultiply(players[index].model.transform, MatrixRotateXYZ((Vector3) { 0, PI - players[index].cameraFPS.angle.x, 0 }));
+    players[index].model.transform = MatrixMultiply(players[index].model.transform, MatrixTranslate(players[index].position.x, players[index].position.y, players[index].position.z));
 
-    player->currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
-    if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-player->size.x, 0.0f, player->size.z));
-    else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(-1.5f * player->size.x, 0.0f, player->size.z));
-    Matrix rot = MatrixRotateXYZ((Vector3) { player->cameraFPS.angle.y, PI - player->cameraFPS.angle.x, 0 });
-    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, rot);
-    if (isLocalPlayer) player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.85f * player->size.y, 0.0f));
-    else player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
-    player->currentGun.model.transform = MatrixMultiply(player->currentGun.model.transform, MatrixTranslate(player->position.x, player->position.y, player->position.z));
+    Vector3 cameraOffset = { 0, 0.9f * players[index].size.y, 0 };
+    players[index].cameraFPS.camera.position = Vector3Add(players[index].position, cameraOffset);
+    players[index].cameraFPS.camera.target = Vector3Add(players[index].cameraFPS.camera.target, cameraOffset);
+    Vector3 tmp = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
+    //if (isLocalPlayer) {
+        //printf("target dir: %f,%f,%f\n", tmp.x, tmp.y, tmp.z);
+    //}
 
-    if (isLocalPlayer && IsKeyPressed(player->inputBindings[SHOOT])) {
-        Vector3 dir = Vector3Subtract(player->cameraFPS.camera.target, player->cameraFPS.camera.position);
-        float projSpeed = 12.0f;
-        float radius = 0.1f;
-        AddProjectile(projectiles, player->cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
-        printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
+    players[index].currentGun.model.transform = MatrixScale(5.0f, 5.0f, 5.0f);
+    if (isLocalPlayer) players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(-players[index].size.x, 0.0f, players[index].size.z));
+    else players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(-1.5f * players[index].size.x, 0.0f, players[index].size.z));
+    Matrix rot = MatrixRotateXYZ((Vector3) { players[index].cameraFPS.angle.y, PI - players[index].cameraFPS.angle.x, 0 });
+    players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, rot);
+    if (isLocalPlayer) players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(0.0f, 0.85f * players[index].size.y, 0.0f));
+    else players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
+    players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(players[index].position.x, players[index].position.y, players[index].position.z));
+
+    if (isLocalPlayer && IsKeyPressed(players[index].inputBindings[SHOOT])) {
+        Vector3 dir = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
+        switch (players[index].currentGun.type) {
+            case GUN_GRENADE:
+                float projSpeed = 12.0f;
+                float radius = 0.1f;
+                AddProjectile(projectiles, players[index].cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
+                //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
+                break;
+            case GUN_BULLET:
+                Ray shootRay = { .position = players[index].cameraFPS.camera.position, .direction = dir };
+
+                for (int i = 0; i < playersLen; i++) {
+                    if (i == index) continue;
+
+                    RayHitInfo playerHitInfo = GetCollisionRayModel(shootRay, players[i].model);
+                    if (playerHitInfo.hit) {
+                        RayHitInfo mapHitInfo = GetCollisionRayModel(shootRay, mapModel);
+
+                        if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
+
+                        players[i].health -= players[index].currentGun.damage;
+
+                        puts("hit");
+                    }
+                }
+                break;
+        }
     }
 }
 
 int main(void) {
-    const int screenWidth = 1280;
-    const int screenHeight = 720;
-
-    InitWindow(screenWidth, screenHeight, "fps.jpeg");
-    SetTargetFPS(60);
+    InitWindow(1280, 720, "fps.jpeg");
+    //InitWindow(GetMonitorWidth(0), GetMonitorHeight(0), "fps.jpeg");
+    SetConfigFlags(FLAG_MSAA_4X_HINT);
+    //SetConfigFlags(FLAG_FULLSCREEN_MODE);
+    SetTargetFPS(GetMonitorRefreshRate(0));
 
     shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
-    Player players[4];
-    int playerLen = 2;
-    players[0] = (Player) {
-        .model = LoadModel("assets/human.obj"),
-        .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-        .size = (Vector3) { 0.15f, 0.75f, 0.15f },
-        .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
-        .health = MAX_HEALTH,
-        .currentGun = {
-            .model = LoadModel("assets/machinegun.obj"),
-            .damage = 0.1f,
+    World world = {
+        .map = LoadModel("assets/final_map.obj"),
+        .players = {
+            {
+                .model = LoadModel("assets/human.obj"),
+                .position = (Vector3){ 4.0f, 1.0f, 4.0f },
+                .size = (Vector3) { 0.15f, 0.75f, 0.15f },
+                .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
+                .health = MAX_HEALTH,
+                .currentGun = {
+                    .model = LoadModel("assets/machinegun.obj"),
+                    .type = GUN_BULLET,
+                    .damage = 0.1f,
+                }
+            },
+            {
+                .model = LoadModel("assets/human.obj"),
+                .position = (Vector3){ 4.0f, 1.0f, 4.0f },
+                .size = (Vector3) { 0.15f, 0.75f, 0.15f },
+                .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
+                .health = MAX_HEALTH,
+                .currentGun = {
+                    .model = LoadModel("assets/machinegun.obj"),
+                    .type = GUN_GRENADE,
+                    .damage = 0.1f,
+                }
+            }
+        },
+        .playersLen = 2,
+        .lights = {
+            .lightsLenLoc = GetShaderLocation(shader, "lightsLen"),
+            .lightsPositionLoc = GetShaderLocation(shader, "lightsPosition"),
+            .lightsColorLoc = GetShaderLocation(shader, "lightsColor"),
+
+            .lightsPosition = { (Vector3) { 2.0, 3.0, 2.0 }, (Vector3) { -2.0, 4.0, -3.0 } },
+            .lightsColor = { (Vector3) { 0.6, 0.5, 0.4 }, (Vector3) { 0.5, 0.5, 0.5 } },
+            .lightsLen = 2,
         }
     };
-    players[1] = (Player) {
-        .model = LoadModel("assets/human.obj"),
-        .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-        .size = (Vector3) { 0.15f, 0.75f, 0.15f },
-        .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
-        .health = MAX_HEALTH,
-        .currentGun = {
-            .model = LoadModel("assets/machinegun.obj"),
-            .damage = 0.1f,
-        }
-    };
 
-    Projectiles projectiles = {0};
-
-    LightSystem lights = {
-        .lightsLenLoc = GetShaderLocation(shader, "lightsLen"),
-        .lightsPositionLoc = GetShaderLocation(shader, "lightsPosition"),
-        .lightsColorLoc = GetShaderLocation(shader, "lightsColor"),
-
-        .lightsPosition = { (Vector3) { 2.0, 3.0, 2.0 }, (Vector3) { -2.0, 4.0, -3.0 } },
-        .lightsColor = { (Vector3) { 0.6, 0.5, 0.4 }, (Vector3) { 0.5, 0.5, 0.5 } },
-        .lightsLen = 2,
-    };
-
-    for (int i = 0; i < playerLen; i++) {
-        SetupPlayer(&players[i]);
-        SetupGun(&players[i].currentGun);
+    SetupWorld(&world);
+    for (int i = 0; i < world.playersLen; i++) {
+        SetupPlayer(&world.players[i]);
+        SetupGun(&world.players[i].currentGun);
     }
 
-    Model mapModel = LoadModel("assets/final_map.obj");
-    mapModel.materials[0].shader = shader;
-
     while (!WindowShouldClose()) {
-        for (int i = 0; i < playerLen; i++) {
-            if (i == LOCAL_PLAYER_INDEX) MovePlayer(mapModel, &players[i]);
-            else ApplyGravity(mapModel, &players[i].position, players[i].size.y, &players[i].velocity, &players[i].grounded);
+        for (int i = 0; i < world.playersLen; i++) {
+            if (i == LOCAL_PLAYER_INDEX) MovePlayer(world.map, &world.players[i]);
+            else ApplyGravity(world.map, &world.players[i].position, world.players[i].size.y, &world.players[i].velocity, &world.players[i].grounded);
 
-            UpdatePlayer(&players[i], &projectiles, i == LOCAL_PLAYER_INDEX);
+            UpdatePlayer(i, &world.projectiles, world.players, world.playersLen, world.map);
         }
 
-        UpdateProjectiles(mapModel, &projectiles);
+        UpdateProjectiles(world.map, &world.projectiles);
 
-        UpdateLights(lights);
+        UpdateLights(world.lights);
 
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
 
-        BeginMode3D(players[LOCAL_PLAYER_INDEX].cameraFPS.camera);
+        BeginMode3D(world.players[LOCAL_PLAYER_INDEX].cameraFPS.camera);
 
-        DrawModel(mapModel, (Vector3) {0}, 1.0f, WHITE);
+        DrawModel(world.map, (Vector3) {0}, 1.0f, WHITE);
 
-        for (int i = 0; i < playerLen; i++) {
-            DrawModel(players[i].model, Vector3Zero(), 1.0f, WHITE);
-            DrawCubeWires(players[i].position, 2 * players[i].size.x, 2 * players[i].size.y, 2 * players[i].size.z, BLUE);
-            DrawModel(players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
+        for (int i = 0; i < world.playersLen; i++) {
+            DrawModel(world.players[i].model, Vector3Zero(), 1.0f, WHITE);
+            DrawCubeWires(world.players[i].position, 2 * world.players[i].size.x, 2 * world.players[i].size.y, 2 * world.players[i].size.z, BLUE);
+            DrawModel(world.players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
         }
 
-        DrawProjectiles(&projectiles);
+        DrawProjectiles(&world.projectiles);
 
         EndMode3D();
 
-        DrawRectangleGradientH(10, 10, 20 * players[0].health, 20, RED, GREEN);
+        DrawRectangleGradientH(10, 10, 20 * world.players[0].health, 20, RED, GREEN);
 
         DrawLine(GetScreenWidth() / 2 - 6, GetScreenHeight() / 2, GetScreenWidth() / 2 + 5, GetScreenHeight() / 2, MAGENTA);
         DrawLine(GetScreenWidth() / 2, GetScreenHeight() / 2 - 6, GetScreenWidth() / 2, GetScreenHeight() / 2 + 5, MAGENTA);
@@ -392,7 +438,11 @@ int main(void) {
         EndDrawing();
     }
 
-    UnloadModel(mapModel);
+    UnloadModel(world.map);
+    for (int i = 0; i < world.playersLen; i++) {
+        UnloadModel(world.players[i].model);
+        UnloadModel(world.players[i].currentGun.model);
+    }
 
     CloseWindow();
 
