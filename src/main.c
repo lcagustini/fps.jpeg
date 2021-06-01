@@ -366,7 +366,7 @@ int main(void) {
                 .currentGun = {
                     .model = LoadModel("assets/machinegun.obj"),
                     .type = GUN_GRENADE,
-                    .damage = 0.1f,
+                    .damage = 0.3f,
                 }
             },
             {
@@ -378,7 +378,7 @@ int main(void) {
                 .currentGun = {
                     .model = LoadModel("assets/machinegun.obj"),
                     .type = GUN_GRENADE,
-                    .damage = 0.1f,
+                    .damage = 0.3f,
                 }
             }
         },
@@ -437,7 +437,9 @@ int main(void) {
 
         EndMode3D();
 
-        DrawRectangleGradientH(10, 10, 20 * world.players[0].health, 20, RED, GREEN);
+        for (int i = 0; i < world.playersLen; i++) {
+            DrawRectangleGradientH(10, i * 25 + 10, 20 * world.players[i].health, 20, RED, GREEN);
+        }
 
         DrawLine(GetScreenWidth() / 2 - 6, GetScreenHeight() / 2, GetScreenWidth() / 2 + 5, GetScreenHeight() / 2, MAGENTA);
         DrawLine(GetScreenWidth() / 2, GetScreenHeight() / 2 - 6, GetScreenWidth() / 2, GetScreenHeight() / 2 + 5, MAGENTA);
