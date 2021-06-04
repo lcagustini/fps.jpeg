@@ -50,11 +50,20 @@ float noise (in vec2 st) {
 
 vec3 wallTexture(vec2 uv)
 {
-    if (fract(uv.x) < 0.1 || fract(uv.y) < 0.1) {
-        return vec3(0.7, 0.7, 0.7);
-    }
+    //vec3 color1 = vec3(0.7, 0.7, 0.7);
+    vec3 color1 = vec3(0.3, 0.1, 0.1);
+    vec3 color2 = vec3(0.45, 0.2, 0.2);
 
-    return vec3(0.45, 0.2, 0.2);
+    float dist_x = min(fract(uv.x), 1-fract(uv.x));
+    float dist_y = min(fract(uv.y), 1-fract(uv.y));
+
+    float wx = fwidth(dist_x) * 2;
+    float wy = fwidth(dist_y) * 2;
+
+    vec3 color_x = mix(color1, color2, smoothstep(-wx, wx, dist_x - 0.02));
+    vec3 color_y = mix(color1, color2, smoothstep(-wy, wy, dist_y - 0.02));
+
+    return min(color_x, color_y);
 }
 
 vec3 groundTexture(vec2 uv)
