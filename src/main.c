@@ -7,6 +7,7 @@
 #include "string.h"
 #include "time.h"
 #include <sys/time.h>
+#include "stdlib.h"
 
 #include <sys/socket.h>
 #include <netdb.h>
@@ -89,10 +90,10 @@ void MovePlayer(Model mapModel, Player *player) {
 }
 
 
-void DrawProjectiles(Projectiles *projectiles) {
-    for (int i = 0; i < projectiles->count; i++) {
+void DrawProjectiles(NetworkProjectile *projectiles, int len) {
+    for (int i = 0; i < len; i++) {
         // TODO: maybe use DrawSphereEx to draw a sphere with less slices if performance becomes a concern
-        DrawSphere(projectiles->position[i], projectiles->radius[i], YELLOW);
+        DrawSphere(projectiles[i].position, projectiles[i].radius, YELLOW);
     }
 }
 
@@ -100,7 +101,6 @@ Gun SetupGun(GunType type) {
     Gun gun = {
         .model = LoadModel("assets/machinegun.obj"),
         .type = type,
-        .damage = 0.3f,
     };
 
     for (int i = 0; i < gun.model.materialCount; i++) {
@@ -159,7 +159,7 @@ void UpdateLights(LightSystem lights) {
     SetShaderValueV(shader, lights.lightsColorLoc, &lights.lightsColor, SHADER_UNIFORM_VEC3, lights.lightsLen);
 }
 
-void UpdatePlayer(int index, Projectiles *projectiles, Player *players, Model mapModel) {
+void UpdatePlayer(int index, Player *players, Model mapModel) {
     bool isLocalPlayer = index == localPlayerID;
 
     players[index].model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
@@ -179,40 +179,6 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, Model ma
     if (isLocalPlayer) players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(0.0f, 0.85f * players[index].size.y, 0.0f));
     else players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
     players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(players[index].position.x, players[index].position.y, players[index].position.z));
-
-    /*
-    if (isLocalPlayer && IsKeyPressed(players[index].inputBindings[SHOOT])) {
-        Vector3 dir = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
-        switch (players[index].currentGun.type) {
-            case GUN_GRENADE: {
-                float projSpeed = 12.0f;
-                float radius = 0.1f;
-                AddProjectile(projectiles, players[index].cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE);
-                //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
-                break;
-            }
-            case GUN_BULLET: {
-                Ray shootRay = { .position = players[index].cameraFPS.camera.position, .direction = dir };
-
-                for (int i = 0; i < playersLen; i++) {
-                    if (i == index) continue;
-
-                    RayHitInfo playerHitInfo = GetCollisionRayModel(shootRay, players[i].model);
-                    if (playerHitInfo.hit) {
-                        RayHitInfo mapHitInfo = GetCollisionRayModel(shootRay, mapModel);
-
-                        if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
-
-                        players[i].health -= players[index].currentGun.damage;
-
-                        puts("hit");
-                    }
-                }
-                break;
-            }
-        }
-    }
-    */
 }
 
 int main(void) {
@@ -301,6 +267,26 @@ int main(void) {
                         }
                     }
                     break;
+                case PACKET_PROJECTILES:
+                    {
+                        struct {
+                            PacketType type;
+                            int len;
+                        } packetHeader;
+
+                        recv(socket_fd, &packetHeader, sizeof(packetHeader), MSG_PEEK);
+
+                        int projectilesPacketSize = sizeof(ProjectilesPacket) + packetHeader.len * sizeof(NetworkProjectile);
+
+                        ProjectilesPacket *projectilesPacket = malloc(projectilesPacketSize);
+                        recv(socket_fd, projectilesPacket, projectilesPacketSize, 0);
+
+                        memcpy(&world.projectiles[0], &projectilesPacket->projectiles[0], packetHeader.len * sizeof(NetworkProjectile));
+                        world.projectilesLen = packetHeader.len;
+
+                        free(projectilesPacket);
+                    }
+                    break;
                 default:
                     //if (type != 0) printf("got %d\n", type);
                     break;
@@ -317,6 +303,7 @@ int main(void) {
             .playerID = localPlayerID,
             .position = world.players[localPlayerID].position,
             .angle = world.players[localPlayerID].cameraFPS.angle,
+            .size = world.players[localPlayerID].size,
             .shoot = IsKeyPressed(world.players[localPlayerID].inputBindings[SHOOT]),
             .currentGun = world.players[localPlayerID].currentGun.type,
         };
@@ -325,7 +312,7 @@ int main(void) {
         for (int i = 0; i < MAX_PLAYERS; i++) {
             if (!world.players[i].isActive) continue;
 
-            UpdatePlayer(i, &world.projectiles, world.players, world.map);
+            UpdatePlayer(i, world.players, world.map);
         }
 
         //UpdateProjectiles(world.map, &world.projectiles);
@@ -359,7 +346,7 @@ int main(void) {
             DrawModel(world.players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
         }
 
-        DrawProjectiles(&world.projectiles);
+        DrawProjectiles(world.projectiles, world.projectilesLen);
 
         EndMode3D();
 

@@ -46,7 +46,6 @@ typedef enum {
 typedef struct {
     Model model;
     GunType type;
-    float damage;
 } Gun;
 
 typedef struct {
@@ -79,8 +78,15 @@ typedef struct {
     float radius[MAX_PROJECTILES];
     float lifetime[MAX_PROJECTILES];
     ProjectileType type[MAX_PROJECTILES];
+    int owners[MAX_PROJECTILES];
     int count;
 } Projectiles;
+
+typedef struct {
+    Vector3 position;
+    float radius;
+    ProjectileType type;
+} NetworkProjectile;
 
 typedef struct {
     int lightsLenLoc;
@@ -98,7 +104,8 @@ typedef struct {
     Player players[MAX_PLAYERS];
     int playersLen;
 
-    Projectiles projectiles;
+    NetworkProjectile projectiles[MAX_PROJECTILES];
+    int projectilesLen;
 
     LightSystem lights;
 } World;
@@ -118,6 +125,7 @@ typedef enum {
 
     PACKET_INPUT,
     PACKET_STATE,
+    PACKET_PROJECTILES,
 
     PACKET_JOIN,
     PACKET_PLAYER_LIST,
@@ -130,6 +138,7 @@ typedef struct {
 
     Vector3 position;
     Vector2 angle;
+    Vector3 size;
 
     bool shoot;
 
@@ -144,6 +153,13 @@ typedef struct {
     GunType playersGuns[MAX_PLAYERS];
     float playersHealth[MAX_PLAYERS];
 } StatePacket;
+
+typedef struct {
+    PacketType type;
+
+    int len;
+    NetworkProjectile projectiles[];
+} ProjectilesPacket;
 
 typedef struct {
     PacketType type;

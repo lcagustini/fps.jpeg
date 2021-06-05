@@ -5,6 +5,8 @@
 #include "assert.h"
 #include "string.h"
 #include <unistd.h>
+#include <sys/time.h>
+#include "stdlib.h"
 
 #include "raylib.h"
 #define RAYMATH_HEADER_ONLY
@@ -14,13 +16,81 @@
 
 #include "physics.h"
 
-void AddProjectile(Projectiles *projectiles, Vector3 pos, Vector3 vel, float radius, ProjectileType type) {
+typedef struct {
+    bool isActive;
+
+    struct sockaddr_in client_address;
+
+    Vector3 position;
+    Vector2 angle;
+    Vector3 size;
+
+    GunType currentGun;
+
+    float health;
+} ServerPlayer;
+
+Model mapModel;
+Model playerModel;
+float tickTime;
+
+float GetGunTypeDamage(GunType type) {
+    switch (type) {
+        case GUN_BULLET:
+            return 0.3f;
+        case GUN_GRENADE:
+            return 0.3f;
+    }
+}
+
+void AddProjectile(Projectiles *projectiles, Vector3 pos, Vector3 vel, float radius, ProjectileType type, int owner) {
     projectiles->position[projectiles->count] = pos;
     projectiles->velocity[projectiles->count] = vel;
     projectiles->radius[projectiles->count] = radius;
     projectiles->lifetime[projectiles->count] = 0.0f;
     projectiles->type[projectiles->count] = type;
+    projectiles->owners[projectiles->count] = owner;
     projectiles->count++;
+}
+
+void ShootProjectile(Projectiles *projectiles, ServerPlayer players[MAX_PLAYERS], int ownerID) {
+    //Vector3 dir = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
+    Vector3 dir = (Vector3) {0.0f, 0.0f, 1.0f};
+    Matrix rot = MatrixRotateXYZ((Vector3) { players[ownerID].angle.y, PI - players[ownerID].angle.x, 0 });
+    dir = Vector3Transform(dir, rot);
+
+    Vector3 cameraOffset = { 0, 0.9f * players[ownerID].size.y, 0 };
+    Vector3 eyePosition = Vector3Add(players[ownerID].position, cameraOffset);
+
+    switch (players[ownerID].currentGun) {
+        case GUN_GRENADE:
+            {
+                float projSpeed = 12.0f;
+                float radius = 0.1f;
+
+                AddProjectile(projectiles, eyePosition, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE, ownerID);
+                //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
+            }
+            break;
+        case GUN_BULLET:
+            {
+                Ray shootRay = { .position = eyePosition, .direction = dir };
+
+                for (int i = 0; i < MAX_PLAYERS; i++) {
+                    if (i == ownerID || !players[i].isActive) continue;
+
+                    RayHitInfo playerHitInfo = GetCollisionRayModel(shootRay, playerModel);
+                    if (playerHitInfo.hit) {
+                        RayHitInfo mapHitInfo = GetCollisionRayModel(shootRay, mapModel);
+
+                        if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
+
+                        players[i].health -= GetGunTypeDamage(GUN_BULLET);
+                    }
+                }
+            }
+            break;
+    }
 }
 
 void DeleteProjectile(Projectiles *projectiles, int index) {
@@ -36,12 +106,12 @@ void DeleteProjectile(Projectiles *projectiles, int index) {
 
 void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
-        projectiles->lifetime[i] += GetFrameTime();
+        projectiles->lifetime[i] += tickTime;
 
         // FIXME: dirty hack, we should fix how we add Y to position
         float tmpVelY = projectiles->velocity[i].y;
         projectiles->velocity[i].y = 0.0f;
-        Vector3 nextPos = Vector3Add(projectiles->position[i], Vector3Scale(projectiles->velocity[i], GetFrameTime()));
+        Vector3 nextPos = Vector3Add(projectiles->position[i], Vector3Scale(projectiles->velocity[i], tickTime));
         projectiles->velocity[i].y = tmpVelY;
 
         projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
@@ -55,7 +125,7 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
 
         if (grounded) {
             assert(projectiles->type[i] != PROJECTILE_EXPLOSION);
-            AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 2.0f, PROJECTILE_EXPLOSION);
+            AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 2.0f, PROJECTILE_EXPLOSION, projectiles->owners[i]);
             delete = true;
         }
 
@@ -68,20 +138,6 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
         }
     }
 }
-
-
-typedef struct {
-    bool isActive;
-
-    struct sockaddr_in client_address;
-
-    Vector3 position;
-    Vector2 angle;
-
-    GunType currentGun;
-
-    float health;
-} ServerPlayer;
 
 void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -112,7 +168,12 @@ void main() {
         fprintf(stderr, "Could bind file descriptor to socket.\n");
     }
 
+    InitWindow(200, 200, "server.jpeg");
+    mapModel = LoadModel("assets/map2.obj");
+    playerModel = LoadModel("assets/human.obj");
+
     ServerPlayer players[MAX_PLAYERS] = {0};
+    Projectiles projectiles = {0};
 
     while (true) {
         struct sockaddr_in client_address;
@@ -150,18 +211,30 @@ void main() {
                     //TODO: check if player id and client address are as expected
                     players[inputPacket.playerID].position = inputPacket.position;
                     players[inputPacket.playerID].angle = inputPacket.angle;
+                    players[inputPacket.playerID].size = inputPacket.size;
                     players[inputPacket.playerID].currentGun = inputPacket.currentGun;
-                    if (inputPacket.shoot) puts("pew");
+                    if (inputPacket.shoot) ShootProjectile(&projectiles, players, inputPacket.playerID);
                     break;
                 default:
                     break;
             }
         }
         else {
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            double currentTimestamp = (double)(1000000l * tv.tv_sec + tv.tv_usec) / 1000000.0f;
+            static double previousTimestamp = 0.0f;
+
+            tickTime = currentTimestamp - previousTimestamp;
+            previousTimestamp = currentTimestamp;
+
+            printf("%f\n", tickTime);
+
             //TODO: rethink this sleep
             usleep(1000);
 
-            //TODO: simulate
+            UpdateProjectiles(mapModel, &projectiles);
+
             StatePacket statePacket = { PACKET_STATE };
             for (int i = 0; i < MAX_PLAYERS; i++) {
                 statePacket.playersPositions[i] = players[i].position;
@@ -174,6 +247,22 @@ void main() {
                     sendto(socket_fd, &statePacket, sizeof(statePacket), 0, (struct sockaddr *)&players[i].client_address, len);
                 }
             }
+
+            int projectilesPacketSize = sizeof(ProjectilesPacket) + projectiles.count * sizeof(NetworkProjectile);
+            ProjectilesPacket *projectilesPacket = malloc(projectilesPacketSize);
+            projectilesPacket->type = PACKET_PROJECTILES;
+            projectilesPacket->len = projectiles.count;
+            for (int i = 0; i < projectiles.count; i++) {
+                projectilesPacket->projectiles[i].position = projectiles.position[i];
+                projectilesPacket->projectiles[i].radius = projectiles.radius[i];
+                projectilesPacket->projectiles[i].type = projectiles.type[i];
+            }
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (players[i].isActive) {
+                    sendto(socket_fd, projectilesPacket, projectilesPacketSize, 0, (struct sockaddr *)&players[i].client_address, len);
+                }
+            }
+            free(projectilesPacket);
         }
     }
 }
