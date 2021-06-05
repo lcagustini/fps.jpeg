@@ -12,164 +12,10 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 
-#define CAMERA_FIRST_PERSON_FOCUS_DISTANCE              25.0f
-#define CAMERA_FIRST_PERSON_MIN_CLAMP                   89.0f
-#define CAMERA_FIRST_PERSON_MAX_CLAMP                  -89.0f
-
-#define CAMERA_FIRST_PERSON_STEP_TRIGONOMETRIC_DIVIDER  8.0f
-#define CAMERA_FIRST_PERSON_STEP_DIVIDER                30.0f
-#define CAMERA_FIRST_PERSON_WAVING_DIVIDER              200.0f
-
-#define PLAYER_MOVEMENT_SENSITIVITY                     0.25f
-
-#define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
-#define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f
-
-#define MAX_HEALTH 10.0f
-
-#define MAX_PROJECTILES 100
-
-#define LOCAL_PLAYER_INDEX 0
-
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
-
-#define WORLD_UP_VECTOR (Vector3) {0.0f, 1.0f, 0.0f}
-
-typedef enum {
-    MOVE_FRONT = 0,
-    MOVE_BACK,
-    MOVE_RIGHT,
-    MOVE_LEFT,
-    MOVE_JUMP,
-    SHOOT,
-
-    INPUT_ALL,
-} InputAction;
-
-typedef struct {
-    Camera camera;
-    Vector2 angle;
-    float targetDistance;
-} CameraFPS;
-
-typedef enum {
-    GUN_GRENADE,
-    GUN_BULLET
-} GunType;
-
-typedef struct {
-    Model model;
-    GunType type;
-    float damage;
-} Gun;
-
-typedef struct {
-    Model model;
-
-    Vector3 position;
-    Vector3 velocity;
-
-    Vector3 size;
-
-    Gun currentGun;
-
-    float health;
-    bool grounded;
-
-    CameraFPS cameraFPS;
-    char inputBindings[INPUT_ALL];
-} Player;
-
-typedef struct {
-    Vector3 position[MAX_PROJECTILES];
-    Vector3 velocity[MAX_PROJECTILES];
-    float radius[MAX_PROJECTILES];
-    int count;
-} Projectiles;
-
-typedef struct {
-    int lightsLenLoc;
-    int lightsPositionLoc;
-    int lightsColorLoc;
-
-    Vector3 lightsPosition[10];
-    Vector3 lightsColor[10];
-    int lightsLen;
-} LightSystem;
-
-typedef struct {
-    Model map;
-
-    Player players[4];
-    int playersLen;
-
-    Projectiles projectiles;
-
-    LightSystem lights;
-} World;
+#include "types.h"
 
 Shader shader;
-
-#include "physics.h"
-
-Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vector3 *velocity, bool *grounded) {
-    Ray ray = {
-        .position = nextPos,
-        .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
-    };
-    RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
-    if (hit.hit && hit.distance < radius) {
-        nextPos = Vector3Add(hit.position, Vector3Scale(WORLD_UP_VECTOR, radius));
-        *grounded = true;
-        velocity->y = 0;
-    } else {
-        *grounded = false;
-    }
-
-    return nextPos;
-}
-
-void ApplyGravity(Model mapModel, Vector3 *position, float radius, Vector3 *velocity, bool *grounded) {
-    *velocity = Vector3Subtract(*velocity, (Vector3) {0.0f, 3.0f * GetFrameTime(), 0.0f});
-    Vector3 nextPos = *position;
-    nextPos.y += velocity->y * GetFrameTime();
-    *position = CollideWithMapGravity(mapModel, nextPos, radius, velocity, grounded);
-}
-
-void AddProjectile(Projectiles *projectiles, Vector3 pos, Vector3 vel, float radius) {
-    projectiles->position[projectiles->count] = pos;
-    projectiles->velocity[projectiles->count] = vel;
-    projectiles->radius[projectiles->count] = radius;
-    projectiles->count++;
-}
-
-void DeleteProjectile(Projectiles *projectiles, int index) {
-    projectiles->count--;
-    for (int i = index; i < projectiles->count; i++) {
-        projectiles->position[i] = projectiles->position[i+1];
-        projectiles->velocity[i] = projectiles->velocity[i+1];
-    }
-}
-
-void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
-    for (int i = 0; i < projectiles->count; i++) {
-        // FIXME: dirty hack, we should fix how we add Y to position
-        float tmpVelY = projectiles->velocity[i].y;
-        projectiles->velocity[i].y = 0.0f;
-        Vector3 nextPos = Vector3Add(projectiles->position[i], Vector3Scale(projectiles->velocity[i], GetFrameTime()));
-        projectiles->velocity[i].y = tmpVelY;
-
-        projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
-
-        bool grounded = false;
-        ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
-
-        if (grounded) {
-          DeleteProjectile(projectiles, i--);
-        }
-    }
-}
+int localPlayerID = -1;
 
 void DrawProjectiles(Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
@@ -219,76 +65,6 @@ void SetupPlayer(Player *player)
     DisableCursor();
 }
 
-void MovePlayer(Model mapModel, Player *player) {
-    static Vector2 previousMousePosition = { 0.0f, 0.0f };
-
-    Vector2 mousePositionDelta = { 0.0f, 0.0f };
-    Vector2 mousePosition = GetMousePosition();
-    float mouseWheelMove = GetMouseWheelMove();
-
-    bool inputs[5] = { IsKeyDown(player->inputBindings[MOVE_FRONT]),
-        IsKeyDown(player->inputBindings[MOVE_BACK]),
-        IsKeyDown(player->inputBindings[MOVE_RIGHT]),
-        IsKeyDown(player->inputBindings[MOVE_LEFT]) };
-
-    mousePositionDelta.x = mousePosition.x - previousMousePosition.x;
-    mousePositionDelta.y = mousePosition.y - previousMousePosition.y;
-
-    previousMousePosition = mousePosition;
-
-    float deltaX = (sinf(player->cameraFPS.angle.x) * inputs[MOVE_BACK] -
-            sinf(player->cameraFPS.angle.x) * inputs[MOVE_FRONT] -
-            cosf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] +
-            cosf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
-
-    float deltaZ = (cosf(player->cameraFPS.angle.x) * inputs[MOVE_BACK] -
-            cosf(player->cameraFPS.angle.x) * inputs[MOVE_FRONT] +
-            sinf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] -
-            sinf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
-
-    // TODO: this whole code won't work with ceilings, we need to integrate gravity with CollideWithMap()
-
-    Vector3 frameMovement = {0};
-    frameMovement.x = deltaX * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
-    frameMovement.z = deltaZ * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
-
-    float tmpVelY = player->velocity.y;
-    player->velocity.y = 0.0f;
-    player->velocity = Vector3Scale(Vector3Normalize(frameMovement), GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY);
-    player->velocity.y = tmpVelY;
-
-    if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
-        player->grounded = false;
-        player->velocity.y = 3.0f;
-    }
-
-    ApplyGravity(mapModel, &player->position, player->size.y, &player->velocity, &player->grounded);
-
-    tmpVelY = player->velocity.y;
-    player->velocity.y = 0.0f;
-    Vector3 nextPos = Vector3Add(player->position, player->velocity);
-    player->position = CollideWithMap(mapModel, player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL);
-    player->velocity.y = tmpVelY;
-
-    // Camera orientation calculation
-    player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
-    player->cameraFPS.angle.y += (mousePositionDelta.y * -CAMERA_MOUSE_MOVE_SENSITIVITY);
-
-    // Angle clamp
-    if (player->cameraFPS.angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD;
-    else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD;
-
-    // Recalculate camera target considering translation and rotation
-    Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance));
-    Matrix rotation = MatrixRotateXYZ((Vector3) { PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
-    Matrix transform = MatrixMultiply(translation, rotation);
-
-    // TODO: investigate
-    player->cameraFPS.camera.target.x = player->position.x - transform.m12;
-    player->cameraFPS.camera.target.y = player->position.y - transform.m13;
-    player->cameraFPS.camera.target.z = player->position.z - transform.m14;
-}
-
 void UpdateLights(LightSystem lights) {
     SetShaderValue(shader, lights.lightsLenLoc, &lights.lightsLen, SHADER_UNIFORM_INT);
     SetShaderValueV(shader, lights.lightsPositionLoc, &lights.lightsPosition, SHADER_UNIFORM_VEC3, lights.lightsLen);
@@ -296,7 +72,7 @@ void UpdateLights(LightSystem lights) {
 }
 
 void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int playersLen, Model mapModel) {
-    bool isLocalPlayer = index == LOCAL_PLAYER_INDEX;
+    bool isLocalPlayer = index == localPlayerID;
 
     players[index].model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
     players[index].model.transform = MatrixMultiply(players[index].model.transform, MatrixRotateXYZ((Vector3) { 0, PI - players[index].cameraFPS.angle.x, 0 }));
@@ -316,6 +92,7 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
     else players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(0.0f, 0.0f, 0.0f));
     players[index].currentGun.model.transform = MatrixMultiply(players[index].currentGun.model.transform, MatrixTranslate(players[index].position.x, players[index].position.y, players[index].position.z));
 
+    /*
     if (isLocalPlayer && IsKeyPressed(players[index].inputBindings[SHOOT])) {
         Vector3 dir = Vector3Subtract(players[index].cameraFPS.camera.target, players[index].cameraFPS.camera.position);
         switch (players[index].currentGun.type) {
@@ -347,6 +124,7 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
             }
         }
     }
+    */
 }
 
 int main(void) {
@@ -411,26 +189,51 @@ int main(void) {
     fcntl(socket_fd, F_SETFL, O_NONBLOCK);
     struct sockaddr_in server_address = {0};
     server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(20585);
-    server_address.sin_addr.s_addr = INADDR_ANY;
-    struct sockaddr *addr = (struct sockaddr *) &server_address;
+    server_address.sin_port = htons(20586);
+    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(socket_fd, addr, sizeof(server_address)) == -1) {
-        fprintf(stderr, "ERROR: Could not bind file descriptor to socket.\n");
-    }
-    else {
-        fprintf(stderr, "Could bind file descriptor to socket.\n");
+    {
+        JoinPacket joinPacket = { PACKET_JOIN };
+        sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
     }
 
     while (!WindowShouldClose()) {
+        PacketType type = 0;
+        recv(socket_fd, &type, sizeof(type), MSG_PEEK);
+
+        switch (type) {
+            case PACKET_PLAYER_LIST:
+                {
+                    PlayerListPacket playerListPacket = {0};
+                    recv(socket_fd, &playerListPacket, sizeof(playerListPacket), 0);
+                    localPlayerID = playerListPacket.clientId;
+
+                    printf("Got id %d\n", localPlayerID);
+                    for (int i = 0; i < playerListPacket.allIdsLen; i++) {
+                        printf("Id %d is online\n", playerListPacket.allIds[i]);
+                    }
+                }
+                break;
+            default:
+                if (type != 0) printf("got %d\n", type);
+                break;
+        }
+
+        if (localPlayerID == -1) continue;
+
         for (int i = 0; i < world.playersLen; i++) {
-            if (i == LOCAL_PLAYER_INDEX) MovePlayer(world.map, &world.players[i]);
-            else ApplyGravity(world.map, &world.players[i].position, world.players[i].size.y, &world.players[i].velocity, &world.players[i].grounded);
+            //if (i == localPlayerID) MovePlayer(world.map, &world.players[i]);
+            //else ApplyGravity(world.map, &world.players[i].position, world.players[i].size.y, &world.players[i].velocity, &world.players[i].grounded);
 
             UpdatePlayer(i, &world.projectiles, world.players, world.playersLen, world.map);
         }
 
-        UpdateProjectiles(world.map, &world.projectiles);
+        if (IsKeyPressed(world.players[0].inputBindings[SHOOT])) {
+            ShootPacket shoot = { PACKET_SHOOT };
+            sendto(socket_fd, &shoot, sizeof(shoot), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        }
+
+        //UpdateProjectiles(world.map, &world.projectiles);
 
         UpdateLights(world.lights);
 
@@ -438,7 +241,7 @@ int main(void) {
 
         ClearBackground(RAYWHITE);
 
-        BeginMode3D(world.players[LOCAL_PLAYER_INDEX].cameraFPS.camera);
+        BeginMode3D(world.players[localPlayerID].cameraFPS.camera);
 
         int timeLoc = GetShaderLocation(shader, "time");
         struct timeval tv;
