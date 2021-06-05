@@ -450,3 +450,10 @@ Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vec
     return nextPos;
 }
 
+void ApplyGravity(Model mapModel, Vector3 *position, float radius, Vector3 *velocity, bool *grounded) {
+    *velocity = Vector3Subtract(*velocity, (Vector3) {0.0f, 3.0f * GetFrameTime(), 0.0f});
+    Vector3 nextPos = *position;
+    nextPos.y += velocity->y * GetFrameTime();
+    *position = CollideWithMapGravity(mapModel, nextPos, radius, velocity, grounded);
+}
+

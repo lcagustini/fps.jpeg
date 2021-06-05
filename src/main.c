@@ -4,6 +4,7 @@
 #include "math.h"
 #include "stdio.h"
 #include "assert.h"
+#include "string.h"
 #include "time.h"
 #include <sys/time.h>
 
@@ -12,10 +13,81 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 
-#include "types.h"
+#include "physics.h"
 
 Shader shader;
 int localPlayerID = -1;
+
+void MovePlayer(Model mapModel, Player *player) {
+    static Vector2 previousMousePosition = { 0.0f, 0.0f };
+
+    Vector2 mousePositionDelta = { 0.0f, 0.0f };
+    Vector2 mousePosition = GetMousePosition();
+    float mouseWheelMove = GetMouseWheelMove();
+
+    bool inputs[5] = { IsKeyDown(player->inputBindings[MOVE_FRONT]),
+        IsKeyDown(player->inputBindings[MOVE_BACK]),
+        IsKeyDown(player->inputBindings[MOVE_RIGHT]),
+        IsKeyDown(player->inputBindings[MOVE_LEFT]) };
+
+    mousePositionDelta.x = mousePosition.x - previousMousePosition.x;
+    mousePositionDelta.y = mousePosition.y - previousMousePosition.y;
+
+    previousMousePosition = mousePosition;
+
+    float deltaX = (sinf(player->cameraFPS.angle.x) * inputs[MOVE_BACK] -
+            sinf(player->cameraFPS.angle.x) * inputs[MOVE_FRONT] -
+            cosf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] +
+            cosf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
+
+    float deltaZ = (cosf(player->cameraFPS.angle.x) * inputs[MOVE_BACK] -
+            cosf(player->cameraFPS.angle.x) * inputs[MOVE_FRONT] +
+            sinf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] -
+            sinf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
+
+    // TODO: this whole code won't work with ceilings, we need to integrate gravity with CollideWithMap()
+
+    Vector3 frameMovement = {0};
+    frameMovement.x = deltaX * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
+    frameMovement.z = deltaZ * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
+
+    float tmpVelY = player->velocity.y;
+    player->velocity.y = 0.0f;
+    player->velocity = Vector3Scale(Vector3Normalize(frameMovement), GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY);
+    player->velocity.y = tmpVelY;
+
+    if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
+        player->grounded = false;
+        player->velocity.y = 3.0f;
+    }
+
+    ApplyGravity(mapModel, &player->position, player->size.y, &player->velocity, &player->grounded);
+
+    tmpVelY = player->velocity.y;
+    player->velocity.y = 0.0f;
+    Vector3 nextPos = Vector3Add(player->position, player->velocity);
+    player->position = CollideWithMap(mapModel, player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL);
+    player->velocity.y = tmpVelY;
+
+    // Camera orientation calculation
+    player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
+    player->cameraFPS.angle.y += (mousePositionDelta.y * -CAMERA_MOUSE_MOVE_SENSITIVITY);
+
+    // Angle clamp
+    if (player->cameraFPS.angle.y > CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MIN_CLAMP * DEG2RAD;
+    else if (player->cameraFPS.angle.y < CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD) player->cameraFPS.angle.y = CAMERA_FIRST_PERSON_MAX_CLAMP * DEG2RAD;
+
+    // Recalculate camera target considering translation and rotation
+    Matrix translation = MatrixTranslate(0, 0, (player->cameraFPS.targetDistance));
+    Matrix rotation = MatrixRotateXYZ((Vector3) { PI*2 - player->cameraFPS.angle.y, PI*2 - player->cameraFPS.angle.x, 0 });
+    Matrix transform = MatrixMultiply(translation, rotation);
+
+    // TODO: investigate
+    player->cameraFPS.camera.target.x = player->position.x - transform.m12;
+    player->cameraFPS.camera.target.y = player->position.y - transform.m13;
+    player->cameraFPS.camera.target.z = player->position.z - transform.m14;
+}
+
 
 void DrawProjectiles(Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
@@ -24,10 +96,18 @@ void DrawProjectiles(Projectiles *projectiles) {
     }
 }
 
-void SetupGun(Gun *gun) {
-    for (int i = 0; i < gun->model.materialCount; i++) {
-        gun->model.materials[i].shader = shader;
+Gun SetupGun(GunType type) {
+    Gun gun = {
+        .model = LoadModel("assets/machinegun.obj"),
+        .type = type,
+        .damage = 0.3f,
+    };
+
+    for (int i = 0; i < gun.model.materialCount; i++) {
+        gun.model.materials[i].shader = shader;
     }
+
+    return gun;
 }
 
 void SetupWorld(World *world) {
@@ -36,6 +116,14 @@ void SetupWorld(World *world) {
 
 void SetupPlayer(Player *player)
 {
+    player->model = LoadModel("assets/human.obj");
+    player->position = (Vector3) { 4.0f, 1.0f, 4.0f };
+    player->size = (Vector3) { 0.15f, 0.75f, 0.15f };
+    char bindings[INPUT_ALL] = { 'W', 'S', 'D', 'A', ' ', 'E' };
+    memcpy(&player->inputBindings, &bindings, sizeof(bindings));
+    player->health = MAX_HEALTH;
+    player->currentGun = SetupGun(GUN_GRENADE);
+
     for (int i = 0; i < player->model.materialCount; i++) {
         player->model.materials[i].shader = shader;
     }
@@ -71,7 +159,7 @@ void UpdateLights(LightSystem lights) {
     SetShaderValueV(shader, lights.lightsColorLoc, &lights.lightsColor, SHADER_UNIFORM_VEC3, lights.lightsLen);
 }
 
-void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int playersLen, Model mapModel) {
+void UpdatePlayer(int index, Projectiles *projectiles, Player *players, Model mapModel) {
     bool isLocalPlayer = index == localPlayerID;
 
     players[index].model.transform = MatrixScale(1.0f, 1.0f, 1.0f);
@@ -141,33 +229,6 @@ int main(void) {
 
     World world = {
         .map = LoadModel("assets/map2.obj"),
-        .players = {
-            {
-                .model = LoadModel("assets/human.obj"),
-                .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-                .size = (Vector3) { 0.15f, 0.75f, 0.15f },
-                .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
-                .health = MAX_HEALTH,
-                .currentGun = {
-                    .model = LoadModel("assets/machinegun.obj"),
-                    .type = GUN_GRENADE,
-                    .damage = 0.3f,
-                }
-            },
-            {
-                .model = LoadModel("assets/human.obj"),
-                .position = (Vector3){ 4.0f, 1.0f, 4.0f },
-                .size = (Vector3) { 0.15f, 0.75f, 0.15f },
-                .inputBindings = { 'W', 'S', 'D', 'A', ' ', 'E' },
-                .health = MAX_HEALTH,
-                .currentGun = {
-                    .model = LoadModel("assets/machinegun.obj"),
-                    .type = GUN_GRENADE,
-                    .damage = 0.3f,
-                }
-            }
-        },
-        .playersLen = 2,
         .lights = {
             .lightsLenLoc = GetShaderLocation(shader, "lightsLen"),
             .lightsPositionLoc = GetShaderLocation(shader, "lightsPosition"),
@@ -180,9 +241,8 @@ int main(void) {
     };
 
     SetupWorld(&world);
-    for (int i = 0; i < world.playersLen; i++) {
+    for (int i = 0; i < MAX_PLAYERS; i++) {
         SetupPlayer(&world.players[i]);
-        SetupGun(&world.players[i].currentGun);
     }
 
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -197,40 +257,75 @@ int main(void) {
         sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
     }
 
+    int timeLoc = GetShaderLocation(shader, "time");
+    int isMapLoc = GetShaderLocation(shader, "isMap");
     while (!WindowShouldClose()) {
-        PacketType type = 0;
-        recv(socket_fd, &type, sizeof(type), MSG_PEEK);
+        while (true) {
+            PacketType type = 0;
+            if (recv(socket_fd, &type, sizeof(type), MSG_PEEK) <= 0) break;
 
-        switch (type) {
-            case PACKET_PLAYER_LIST:
-                {
-                    PlayerListPacket playerListPacket = {0};
-                    recv(socket_fd, &playerListPacket, sizeof(playerListPacket), 0);
-                    localPlayerID = playerListPacket.clientId;
+            switch (type) {
+                case PACKET_PLAYER_LIST:
+                    {
+                        PlayerListPacket playerListPacket = {0};
+                        recv(socket_fd, &playerListPacket, sizeof(playerListPacket), 0);
+                        localPlayerID = playerListPacket.clientId;
 
-                    printf("Got id %d\n", localPlayerID);
-                    for (int i = 0; i < playerListPacket.allIdsLen; i++) {
-                        printf("Id %d is online\n", playerListPacket.allIds[i]);
+                        for (int i = 0; i < MAX_PLAYERS; i++) {
+                            world.players[i].isActive = false;
+                        }
+
+                        printf("Got id %d\n", localPlayerID);
+                        for (int i = 0; i < playerListPacket.allIdsLen; i++) {
+                            world.players[playerListPacket.allIds[i]].isActive = true;
+                            printf("Id %d is online\n", playerListPacket.allIds[i]);
+                        }
                     }
-                }
-                break;
-            default:
-                if (type != 0) printf("got %d\n", type);
-                break;
+                    break;
+                case PACKET_STATE:
+                    {
+                        StatePacket statePacket = {0};
+                        recv(socket_fd, &statePacket, sizeof(statePacket), 0);
+
+                        for (int i = 0; i < MAX_PLAYERS; i++) {
+                            if (i != localPlayerID) {
+                                world.players[i].position = statePacket.playersPositions[i];
+                                world.players[i].cameraFPS.angle = statePacket.playersAngles[i];
+
+                                if (world.players[i].currentGun.type != statePacket.playersGuns[i]) {
+                                    UnloadModel(world.players[i].currentGun.model);
+                                    world.players[i].currentGun = SetupGun(statePacket.playersGuns[i]);
+                                }
+                            }
+                            world.players[i].health = statePacket.playersHealth[i];
+                        }
+                    }
+                    break;
+                default:
+                    //if (type != 0) printf("got %d\n", type);
+                    break;
+            }
         }
 
         if (localPlayerID == -1) continue;
 
-        for (int i = 0; i < world.playersLen; i++) {
-            //if (i == localPlayerID) MovePlayer(world.map, &world.players[i]);
-            //else ApplyGravity(world.map, &world.players[i].position, world.players[i].size.y, &world.players[i].velocity, &world.players[i].grounded);
+        MovePlayer(world.map, &world.players[localPlayerID]);
 
-            UpdatePlayer(i, &world.projectiles, world.players, world.playersLen, world.map);
-        }
+        //TODO: limit send rate
+        InputPacket inputPacket = {
+            .type = PACKET_INPUT,
+            .playerID = localPlayerID,
+            .position = world.players[localPlayerID].position,
+            .angle = world.players[localPlayerID].cameraFPS.angle,
+            .shoot = IsKeyPressed(world.players[localPlayerID].inputBindings[SHOOT]),
+            .currentGun = world.players[localPlayerID].currentGun.type,
+        };
+        sendto(socket_fd, &inputPacket, sizeof(inputPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
 
-        if (IsKeyPressed(world.players[0].inputBindings[SHOOT])) {
-            ShootPacket shoot = { PACKET_SHOOT };
-            sendto(socket_fd, &shoot, sizeof(shoot), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (!world.players[i].isActive) continue;
+
+            UpdatePlayer(i, &world.projectiles, world.players, world.map);
         }
 
         //UpdateProjectiles(world.map, &world.projectiles);
@@ -243,14 +338,12 @@ int main(void) {
 
         BeginMode3D(world.players[localPlayerID].cameraFPS.camera);
 
-        int timeLoc = GetShaderLocation(shader, "time");
         struct timeval tv;
         gettimeofday(&tv, NULL);
         float timestamp = (float) tv.tv_usec / 100000; // calculate milliseconds
         SetShaderValue(shader, timeLoc, &timestamp, SHADER_UNIFORM_FLOAT);
 
         // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
-        int isMapLoc = GetShaderLocation(shader, "isMap");
         int isMap = 1;
 
         SetShaderValue(shader, isMapLoc, &isMap, SHADER_UNIFORM_INT);
@@ -258,7 +351,9 @@ int main(void) {
         isMap = 0;
         SetShaderValue(shader, isMapLoc, &isMap, SHADER_UNIFORM_INT);
 
-        for (int i = 0; i < world.playersLen; i++) {
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (!world.players[i].isActive) continue;
+
             DrawModel(world.players[i].model, Vector3Zero(), 1.0f, WHITE);
             DrawCubeWires(world.players[i].position, 2 * world.players[i].size.x, 2 * world.players[i].size.y, 2 * world.players[i].size.z, BLUE);
             DrawModel(world.players[i].currentGun.model, Vector3Zero(), 1.0f, WHITE);
@@ -268,7 +363,9 @@ int main(void) {
 
         EndMode3D();
 
-        for (int i = 0; i < world.playersLen; i++) {
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (!world.players[i].isActive) continue;
+
             DrawRectangleGradientH(10, i * 25 + 10, 20 * world.players[i].health, 20, RED, GREEN);
         }
 
@@ -279,7 +376,7 @@ int main(void) {
     }
 
     UnloadModel(world.map);
-    for (int i = 0; i < world.playersLen; i++) {
+    for (int i = 0; i < MAX_PLAYERS; i++) {
         UnloadModel(world.players[i].model);
         UnloadModel(world.players[i].currentGun.model);
     }

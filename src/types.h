@@ -14,6 +14,7 @@
 #define MAX_HEALTH 10.0f
 
 #define MAX_PROJECTILES 100
+#define MAX_PLAYERS 10
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
@@ -49,6 +50,8 @@ typedef struct {
 } Gun;
 
 typedef struct {
+    bool isActive;
+
     Model model;
 
     Vector3 position;
@@ -85,7 +88,7 @@ typedef struct {
 typedef struct {
     Model map;
 
-    Player players[4];
+    Player players[MAX_PLAYERS];
     int playersLen;
 
     Projectiles projectiles;
@@ -105,15 +108,35 @@ typedef enum {
 
 typedef enum {
     PACKET_ERROR,
-    PACKET_SHOOT,
+
+    PACKET_INPUT,
     PACKET_STATE,
+
     PACKET_JOIN,
     PACKET_PLAYER_LIST,
 } PacketType;
 
 typedef struct {
     PacketType type;
-} ShootPacket;
+
+    int playerID;
+
+    Vector3 position;
+    Vector2 angle;
+
+    bool shoot;
+
+    GunType currentGun;
+} InputPacket;
+
+typedef struct {
+    PacketType type;
+
+    Vector3 playersPositions[MAX_PLAYERS];
+    Vector2 playersAngles[MAX_PLAYERS];
+    GunType playersGuns[MAX_PLAYERS];
+    float playersHealth[MAX_PLAYERS];
+} StatePacket;
 
 typedef struct {
     PacketType type;
@@ -122,16 +145,8 @@ typedef struct {
 typedef struct {
     PacketType type;
 
-    int allIds[10];
+    int allIds[MAX_PLAYERS];
     int allIdsLen;
 
     int clientId;
 } PlayerListPacket;
-
-typedef struct {
-    PacketType type;
-
-    Vector3 playersPositions[4];
-    Vector3 playersAngles[4];
-    int playersLen;
-} StatePacket;
