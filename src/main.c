@@ -47,6 +47,11 @@ typedef enum {
     INPUT_ALL,
 } InputAction;
 
+typedef enum {
+    PROJECTILE_GRENADE,
+    PROJECTILE_EXPLOSION,
+} ProjectileType;
+
 typedef struct {
     Camera camera;
     Vector2 angle;
@@ -85,6 +90,8 @@ typedef struct {
     Vector3 position[MAX_PROJECTILES];
     Vector3 velocity[MAX_PROJECTILES];
     float radius[MAX_PROJECTILES];
+    float lifetime[MAX_PROJECTILES];
+    ProjectileType type[MAX_PROJECTILES];
     int count;
 } Projectiles;
 
@@ -137,10 +144,12 @@ void ApplyGravity(Model mapModel, Vector3 *position, float radius, Vector3 *velo
     *position = CollideWithMapGravity(mapModel, nextPos, radius, velocity, grounded);
 }
 
-void AddProjectile(Projectiles *projectiles, Vector3 pos, Vector3 vel, float radius) {
+void AddProjectile(Projectiles *projectiles, Vector3 pos, Vector3 vel, float radius, ProjectileType type) {
     projectiles->position[projectiles->count] = pos;
     projectiles->velocity[projectiles->count] = vel;
     projectiles->radius[projectiles->count] = radius;
+    projectiles->lifetime[projectiles->count] = 0.0f;
+    projectiles->type[projectiles->count] = type;
     projectiles->count++;
 }
 
@@ -149,11 +158,16 @@ void DeleteProjectile(Projectiles *projectiles, int index) {
     for (int i = index; i < projectiles->count; i++) {
         projectiles->position[i] = projectiles->position[i+1];
         projectiles->velocity[i] = projectiles->velocity[i+1];
+        projectiles->radius[i] = projectiles->radius[i+1];
+        projectiles->lifetime[i] = projectiles->lifetime[i+1];
+        projectiles->type[i] = projectiles->type[i+1];
     }
 }
 
 void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
+	projectiles->lifetime[i] += GetFrameTime();
+
         // FIXME: dirty hack, we should fix how we add Y to position
         float tmpVelY = projectiles->velocity[i].y;
         projectiles->velocity[i].y = 0.0f;
@@ -162,12 +176,26 @@ void UpdateProjectiles(Model mapModel, Projectiles *projectiles) {
 
         projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
 
+	bool delete = false;
         bool grounded = false;
-        ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
+
+	if (projectiles->type[i] == PROJECTILE_GRENADE) {
+            ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
+	}
 
         if (grounded) {
-          DeleteProjectile(projectiles, i--);
+	    assert(projectiles->type[i] != PROJECTILE_EXPLOSION);
+	    AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 2.0f, PROJECTILE_EXPLOSION);
+	    delete = true;
         }
+
+	if (projectiles->type[i] == PROJECTILE_EXPLOSION && projectiles->lifetime[i] > 1.0f) {
+	    delete = true;
+	}
+
+	if (delete) {
+	    DeleteProjectile(projectiles, i--);
+	}
     }
 }
 
@@ -322,7 +350,7 @@ void UpdatePlayer(int index, Projectiles *projectiles, Player *players, int play
             case GUN_GRENADE: {
                 float projSpeed = 12.0f;
                 float radius = 0.1f;
-                AddProjectile(projectiles, players[index].cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius);
+                AddProjectile(projectiles, players[index].cameraFPS.camera.position, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE);
                 //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
                 break;
             }
