@@ -1,12 +1,4 @@
-typedef enum {
-  COLLIDE_AND_SLIDE,
-  COLLIDE_AND_BOUNCE,
-} CollisionResponseType;
-
-typedef enum {
-  HITBOX_AABB,
-  HITBOX_SPHERE,
-} HitboxType;
+#include "types.h"
 
 Vector3 vectorAbs(Vector3 v) {
   return (Vector3) {fabs(v.x), fabs(v.y), fabs(v.z)};
@@ -439,5 +431,29 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
     if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
 
     return nextPos;
+}
+
+Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vector3 *velocity, bool *grounded) {
+    Ray ray = {
+        .position = nextPos,
+        .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
+    };
+    RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
+    if (hit.hit && hit.distance < radius) {
+        nextPos = Vector3Add(hit.position, Vector3Scale(WORLD_UP_VECTOR, radius));
+        *grounded = true;
+        velocity->y = 0;
+    } else {
+        *grounded = false;
+    }
+
+    return nextPos;
+}
+
+void ApplyGravity(Model mapModel, Vector3 *position, float radius, Vector3 *velocity, bool *grounded) {
+    *velocity = Vector3Subtract(*velocity, (Vector3) {0.0f, 3.0f * GetFrameTime(), 0.0f});
+    Vector3 nextPos = *position;
+    nextPos.y += velocity->y * GetFrameTime();
+    *position = CollideWithMapGravity(mapModel, nextPos, radius, velocity, grounded);
 }
 
