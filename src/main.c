@@ -1,20 +1,26 @@
 #include "raylib.h"
 #define RAYMATH_HEADER_ONLY
 #include "raymath.h"
-#include "math.h"
+#include <math.h>
 #include "stdio.h"
 #include "assert.h"
 #include "string.h"
 #include "time.h"
-#include <sys/time.h>
-#include "stdlib.h"
+#include <stdlib.h>
 
-#include <sys/socket.h>
-#include <netdb.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
+#ifdef __linux__
+    #include <sys/time.h>
+    #include <sys/socket.h>
+    #include <netdb.h>
+    #include <fcntl.h>
+    #include <arpa/inet.h>
+    typedef int SOCKET;
+#else
+    #include "windows_hacks.h"
+#endif
 
 #include "physics.h"
+#include "common.h"
 
 Shader shader;
 int localPlayerID = -1;
@@ -89,7 +95,6 @@ void MovePlayer(Model mapModel, Player *player) {
     player->cameraFPS.camera.target.z = player->position.z - transform.m14;
 }
 
-
 void DrawProjectiles(NetworkProjectile *projectiles, int len) {
     for (int i = 0; i < len; i++) {
         // TODO: maybe use DrawSphereEx to draw a sphere with less slices if performance becomes a concern
@@ -114,13 +119,12 @@ void SetupWorld(World *world) {
     world->map.materials[0].shader = shader;
 }
 
-void SetupPlayer(Player *player)
-{
+void SetupPlayer(Player *player) {
     player->model = LoadModel("assets/human.obj");
     player->position = (Vector3) { 4.0f, 1.0f, 4.0f };
     player->size = (Vector3) { 0.15f, 0.75f, 0.15f };
     char bindings[INPUT_ALL] = { 'W', 'S', 'D', 'A', ' ', 'E' };
-    memcpy(&player->inputBindings, &bindings, sizeof(bindings));
+    memcpy(player->inputBindings, bindings, sizeof(bindings));
     player->health = MAX_HEALTH;
     player->currentGun = SetupGun(GUN_GRENADE);
 
@@ -182,6 +186,8 @@ void UpdatePlayer(int index, Player *players, Model mapModel) {
 }
 
 int main(void) {
+    socketInit();
+
     InitWindow(1280, 720, "fps.jpeg");
     //InitWindow(GetMonitorWidth(0), GetMonitorHeight(0), "fps.jpeg");
     SetConfigFlags(FLAG_MSAA_4X_HINT);
@@ -211,30 +217,39 @@ int main(void) {
         SetupPlayer(&world.players[i]);
     }
 
-    int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    fcntl(socket_fd, F_SETFL, O_NONBLOCK);
+    int timeLoc = GetShaderLocation(shader, "time");
+    int isMapLoc = GetShaderLocation(shader, "isMap");
+
+
+    SOCKET socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    validateSocket(socket_fd);
+    setupSocket(socket_fd);
+
+    struct sockaddr_in inbound_addr = { 0 };
+    int inbound_addr_len = sizeof(inbound_addr);
+
     struct sockaddr_in server_address = {0};
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(20586);
-    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    inet_pton(AF_INET, SERVER_ADDR, &server_address.sin_addr.s_addr);
 
-    {
-        JoinPacket joinPacket = { PACKET_JOIN };
-        sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
-    }
+    JoinPacket joinPacket = { PACKET_JOIN };
+    sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
 
-    int timeLoc = GetShaderLocation(shader, "time");
-    int isMapLoc = GetShaderLocation(shader, "isMap");
     while (!WindowShouldClose()) {
         while (true) {
-            PacketType type = 0;
-            if (recv(socket_fd, &type, sizeof(type), MSG_PEEK) <= 0) break;
+            PacketType type;
+            int ret = peekPacket(socket_fd, &server_address, &type, NULL);
+            if (ret <= 0) break;
+
+            checkClientState();
 
             switch (type) {
                 case PACKET_PLAYER_LIST:
                     {
                         PlayerListPacket playerListPacket = {0};
-                        recv(socket_fd, &playerListPacket, sizeof(playerListPacket), 0);
+                        recvfrom(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, &server_address, &inbound_addr_len);
+
                         localPlayerID = playerListPacket.clientId;
 
                         for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -251,7 +266,7 @@ int main(void) {
                 case PACKET_STATE:
                     {
                         StatePacket statePacket = {0};
-                        recv(socket_fd, &statePacket, sizeof(statePacket), 0);
+                        recvfrom(socket_fd, &statePacket, sizeof(statePacket), 0, &server_address, &inbound_addr_len);
 
                         for (int i = 0; i < MAX_PLAYERS; i++) {
                             if (i != localPlayerID) {
@@ -269,20 +284,16 @@ int main(void) {
                     break;
                 case PACKET_PROJECTILES:
                     {
-                        struct {
-                            PacketType type;
-                            int len;
-                        } packetHeader;
+                        int len;
+                        peekPacket(socket_fd, &server_address, NULL, &len);
 
-                        recv(socket_fd, &packetHeader, sizeof(packetHeader), MSG_PEEK);
-
-                        int projectilesPacketSize = sizeof(ProjectilesPacket) + packetHeader.len * sizeof(NetworkProjectile);
+                        int projectilesPacketSize = sizeof(ProjectilesPacket) + len * sizeof(NetworkProjectile);
 
                         ProjectilesPacket *projectilesPacket = malloc(projectilesPacketSize);
-                        recv(socket_fd, projectilesPacket, projectilesPacketSize, 0);
+                        recvfrom(socket_fd, projectilesPacket, projectilesPacketSize, 0, &server_address, &inbound_addr_len);
 
-                        memcpy(&world.projectiles[0], &projectilesPacket->projectiles[0], packetHeader.len * sizeof(NetworkProjectile));
-                        world.projectilesLen = packetHeader.len;
+                        memcpy(&world.projectiles[0], &projectilesPacket->projectiles[0], len * sizeof(NetworkProjectile));
+                        world.projectilesLen = len;
 
                         free(projectilesPacket);
                     }
@@ -315,8 +326,6 @@ int main(void) {
             UpdatePlayer(i, world.players, world.map);
         }
 
-        //UpdateProjectiles(world.map, &world.projectiles);
-
         UpdateLights(world.lights);
 
         BeginDrawing();
@@ -325,9 +334,11 @@ int main(void) {
 
         BeginMode3D(world.players[localPlayerID].cameraFPS.camera);
 
-        struct timeval tv;
-        gettimeofday(&tv, NULL);
-        float timestamp = (float) tv.tv_usec / 100000; // calculate milliseconds
+        float timestamp = gettimestamp();
+        double integral;
+        timestamp = modf(timestamp, &integral) * 10;
+        printf("timestamp = %lf\n", timestamp);
+
         SetShaderValue(shader, timeLoc, &timestamp, SHADER_UNIFORM_FLOAT);
 
         // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
@@ -369,6 +380,7 @@ int main(void) {
     }
 
     CloseWindow();
+    socketClose(socket_fd);
 
     return 0;
 }

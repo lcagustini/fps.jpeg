@@ -438,9 +438,17 @@ Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vec
         .position = nextPos,
         .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
     };
+#if 0
     RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
+#else
+    RayCollision hit = GetRayCollisionModel(ray, mapModel);
+#endif
     if (hit.hit && hit.distance < radius) {
+#if 0
         nextPos = Vector3Add(hit.position, Vector3Scale(WORLD_UP_VECTOR, radius));
+#else
+        nextPos = Vector3Add(hit.point, Vector3Scale(WORLD_UP_VECTOR, radius));
+#endif
         *grounded = true;
         velocity->y = 0;
     } else {
