@@ -21,7 +21,7 @@
 
 #define WORLD_UP_VECTOR (Vector3) {0.0f, 1.0f, 0.0f}
 
-#define SERVER_ADDR "192.168.15.105"
+#define SERVER_ADDR "127.0.0.1"
 
 typedef enum {
     MOVE_FRONT = 0,

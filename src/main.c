@@ -220,7 +220,6 @@ int main(void) {
     int timeLoc = GetShaderLocation(shader, "time");
     int isMapLoc = GetShaderLocation(shader, "isMap");
 
-
     SOCKET socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     validateSocket(socket_fd);
     setupSocket(socket_fd);
@@ -248,7 +247,7 @@ int main(void) {
                 case PACKET_PLAYER_LIST:
                     {
                         PlayerListPacket playerListPacket = {0};
-                        recvfrom(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, &server_address, &inbound_addr_len);
+                        recvfrom(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, (struct sockaddr *)&server_address, &inbound_addr_len);
 
                         localPlayerID = playerListPacket.clientId;
 
@@ -266,7 +265,7 @@ int main(void) {
                 case PACKET_STATE:
                     {
                         StatePacket statePacket = {0};
-                        recvfrom(socket_fd, &statePacket, sizeof(statePacket), 0, &server_address, &inbound_addr_len);
+                        recvfrom(socket_fd, &statePacket, sizeof(statePacket), 0, (struct sockaddr *)&server_address, &inbound_addr_len);
 
                         for (int i = 0; i < MAX_PLAYERS; i++) {
                             if (i != localPlayerID) {
@@ -290,7 +289,7 @@ int main(void) {
                         int projectilesPacketSize = sizeof(ProjectilesPacket) + len * sizeof(NetworkProjectile);
 
                         ProjectilesPacket *projectilesPacket = malloc(projectilesPacketSize);
-                        recvfrom(socket_fd, projectilesPacket, projectilesPacketSize, 0, &server_address, &inbound_addr_len);
+                        recvfrom(socket_fd, projectilesPacket, projectilesPacketSize, 0, (struct sockaddr *)&server_address, &inbound_addr_len);
 
                         memcpy(&world.projectiles[0], &projectilesPacket->projectiles[0], len * sizeof(NetworkProjectile));
                         world.projectilesLen = len;

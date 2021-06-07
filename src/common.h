@@ -83,7 +83,7 @@ int peekPacket(SOCKET socket_fd, struct sockaddr_in *addr, PacketType *type, int
         memset(dgram, 0, sizeof(dgram));
         recvfrom(socket_fd, &dgram, MAX_UDP_PACKET_SIZE, MSG_PEEK, (struct sockaddr*) addr, &tmp);
 
-        assert(out_packet_len);
+        //assert(out_packet_len);
         if (out_packet_len) *out_packet_len = dgram[1];
     }
 
