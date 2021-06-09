@@ -1,29 +1,41 @@
 #include "raylib.h"
+
 #define RAYMATH_HEADER_ONLY
 #include "raymath.h"
+
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+
 #include <math.h>
-#include "stdio.h"
-#include "assert.h"
-#include "string.h"
-#include "time.h"
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #ifdef __linux__
-    #include <sys/time.h>
-    #include <sys/socket.h>
-    #include <netdb.h>
-    #include <fcntl.h>
-    #include <arpa/inet.h>
-    typedef int SOCKET;
+
+#include <unistd.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+typedef int SOCKET;
+
 #else
-    #include "windows_hacks.h"
+
+#include "windows_hacks.h"
+
 #endif
 
 #include "physics.h"
 #include "common.h"
 
+#include "server.h"
+
 Shader shader;
 int localPlayerID = -1;
+GameScreen currentScreen;
 
 void MovePlayer(Model mapModel, Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
@@ -199,6 +211,8 @@ int main(void) {
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
     shader.locs[SHADER_LOC_MATRIX_MODEL] = GetShaderLocation(shader, "matModel");
 
+    currentScreen = SCREEN_LOBBY;
+
     World world = {
         .map = LoadModel("assets/map2.obj"),
         .lights = {
@@ -212,9 +226,9 @@ int main(void) {
         }
     };
 
-    SetupWorld(&world);
+    //SetupWorld(&world);
     for (int i = 0; i < MAX_PLAYERS; i++) {
-        SetupPlayer(&world.players[i]);
+        //SetupPlayer(&world.players[i]);
     }
 
     int timeLoc = GetShaderLocation(shader, "time");
@@ -225,15 +239,42 @@ int main(void) {
     setupSocket(socket_fd);
 
     struct sockaddr_in inbound_addr = { 0 };
-    int inbound_addr_len = sizeof(inbound_addr);
+    unsigned int inbound_addr_len = sizeof(inbound_addr);
 
     struct sockaddr_in server_address = {0};
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(20586);
     inet_pton(AF_INET, SERVER_ADDR, &server_address.sin_addr.s_addr);
 
+    GuiLoadStyleDefault();
+
+    char ipInput[40] = {0}, portInput[20] = {0};
+    bool ipInputEdit = false, portInputEdit = false;
+    pthread_t thread_id;
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+
+        ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+
+        GuiGrid((Rectangle) { 0, 0, GetScreenWidth(), GetScreenHeight() }, 20.0f, 2); // draw a fancy grid
+
+        if (GuiButton((Rectangle) { 10, 10, 205, 20 }, "Host")) {
+            pthread_create(&thread_id, NULL, serverMain, NULL);
+            break;
+        }
+
+        if (GuiTextBox((Rectangle) { 10, 40, 100, 20}, ipInput, 20, ipInputEdit)) ipInputEdit = !ipInputEdit;
+        if (GuiTextBox((Rectangle) { 115, 40, 40, 20}, portInput, 20, portInputEdit)) portInputEdit = !portInputEdit;
+        if (GuiButton((Rectangle) { 165, 40, 50, 20 }, "Join")) {
+            printf("%s:%s\n", ipInput, portInput);
+        }
+
+        EndDrawing();
+    }
+
     JoinPacket joinPacket = { PACKET_JOIN };
     sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+
 
     while (!WindowShouldClose()) {
         while (true) {

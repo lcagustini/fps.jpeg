@@ -1,28 +1,3 @@
-#include "assert.h"
-#include "string.h"
-#include "stdlib.h"
-
-#include "raylib.h"
-#define RAYMATH_HEADER_ONLY
-#include "raymath.h"
-#include "math.h"
-#include "stdio.h"
-
-#ifdef __linux__
-    #include <unistd.h>
-    #include <sys/time.h>
-    #include <sys/socket.h>
-    #include <netdb.h>
-    #include <fcntl.h>
-    #include <arpa/inet.h>
-    typedef int SOCKET;
-#else
-    #include "windows_hacks.h"
-#endif
-
-#include "physics.h"
-#include "common.h"
-
 typedef struct {
     bool isActive;
 
@@ -47,8 +22,8 @@ float GetGunTypeDamage(GunType type) {
             return 0.3f;
         case GUN_GRENADE:
             return 0.3f;
-	default:
-	    return 0.0f;
+        default:
+            return 0.0f;
     }
 }
 
@@ -74,31 +49,31 @@ void ShootProjectile(Projectiles *projectiles, ServerPlayer players[MAX_PLAYERS]
     switch (players[ownerID].currentGun) {
         case GUN_GRENADE:
             {
-            float projSpeed = 12.0f;
-            float radius = 0.1f;
+                float projSpeed = 12.0f;
+                float radius = 0.1f;
 
-            AddProjectile(projectiles, eyePosition, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE, ownerID);
-            //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
+                AddProjectile(projectiles, eyePosition, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE, ownerID);
+                //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
             }
             break;
         case GUN_BULLET:
-        {
-            Ray shootRay = { .position = eyePosition, .direction = dir };
+            {
+                Ray shootRay = { .position = eyePosition, .direction = dir };
 
-            for (int i = 0; i < MAX_PLAYERS; i++) {
-                if (i == ownerID || !players[i].isActive) continue;
+                for (int i = 0; i < MAX_PLAYERS; i++) {
+                    if (i == ownerID || !players[i].isActive) continue;
 
-                RayCollision playerHitInfo = GetRayCollisionModel(shootRay, playerModel);
-                if (playerHitInfo.hit) {
-                    RayCollision mapHitInfo = GetRayCollisionModel(shootRay, mapModel);
+                    RayCollision playerHitInfo = GetRayCollisionModel(shootRay, playerModel);
+                    if (playerHitInfo.hit) {
+                        RayCollision mapHitInfo = GetRayCollisionModel(shootRay, mapModel);
 
-                    if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
+                        if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
 
-                    players[i].health -= GetGunTypeDamage(GUN_BULLET);
+                        players[i].health -= GetGunTypeDamage(GUN_BULLET);
+                    }
                 }
             }
-        }
-        break;
+            break;
     }
 }
 
@@ -162,7 +137,7 @@ void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
     }
 }
 
-void main() {
+int serverMain() {
     socketInit();
 
     SOCKET socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -181,7 +156,7 @@ void main() {
         fprintf(stderr, "Bound file descriptor to socket.\n");
     }
 
-    InitWindow(200, 200, "server.jpeg");
+    //InitWindow(200, 200, "server.jpeg");
     mapModel = LoadModel("assets/map2.obj");
     playerModel = LoadModel("assets/human.obj");
 
@@ -199,49 +174,51 @@ void main() {
 
         if (ret > 0) {
             switch (type) {
-            case PACKET_JOIN: {
-                    puts("Received PACKET_JOIN");
+                case PACKET_JOIN:
+                    {
+                        puts("Received PACKET_JOIN");
 
-                    JoinPacket joinPacket = { 0 };
-                    recvfrom(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr*)&client_address, &len);
+                        JoinPacket joinPacket = { 0 };
+                        recvfrom(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr*)&client_address, &len);
 
-                    AddPlayer(players, client_address);
+                        AddPlayer(players, client_address);
 
-                    PlayerListPacket playerListPacket;
-                    playerListPacket.type = PACKET_PLAYER_LIST;
-                    playerListPacket.allIdsLen = 0;
-                    for (int i = 0; i < MAX_PLAYERS; i++) {
-                        if (players[i].isActive) {
-                            playerListPacket.allIds[playerListPacket.allIdsLen++] = i;
+                        PlayerListPacket playerListPacket;
+                        playerListPacket.type = PACKET_PLAYER_LIST;
+                        playerListPacket.allIdsLen = 0;
+                        for (int i = 0; i < MAX_PLAYERS; i++) {
+                            if (players[i].isActive) {
+                                playerListPacket.allIds[playerListPacket.allIdsLen++] = i;
+                            }
                         }
-                    }
 
-                    for (int i = 0; i < MAX_PLAYERS; i++) {
-                        if (players[i].isActive) {
-                            playerListPacket.clientId = i;
-                            int err = sendto(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, (struct sockaddr*)&players[i].client_address, len);
-                            //printf("len = %d, err = %d\n", sizeof(playerListPacket), err);
+                        for (int i = 0; i < MAX_PLAYERS; i++) {
+                            if (players[i].isActive) {
+                                playerListPacket.clientId = i;
+                                int err = sendto(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, (struct sockaddr*)&players[i].client_address, len);
+                                //printf("len = %d, err = %d\n", sizeof(playerListPacket), err);
+                            }
                         }
+                        break;
                     }
-                    break;
-                }
-            case PACKET_INPUT: {
-                    InputPacket inputPacket = { 0 };
-                    recvfrom(socket_fd, &inputPacket, sizeof(inputPacket), 0, (struct sockaddr*)&client_address, &len);
-                    //TODO: check if player id and client address are as expected
-                    players[inputPacket.playerID].position = inputPacket.position;
-                    players[inputPacket.playerID].angle = inputPacket.angle;
-                    players[inputPacket.playerID].size = inputPacket.size;
-                    players[inputPacket.playerID].currentGun = inputPacket.currentGun;
-                    if (inputPacket.shoot) ShootProjectile(&projectiles, players, inputPacket.playerID);
-                    break;
-                }
+                case PACKET_INPUT:
+                    {
+                        InputPacket inputPacket = { 0 };
+                        recvfrom(socket_fd, &inputPacket, sizeof(inputPacket), 0, (struct sockaddr*)&client_address, &len);
+                        //TODO: check if player id and client address are as expected
+                        players[inputPacket.playerID].position = inputPacket.position;
+                        players[inputPacket.playerID].angle = inputPacket.angle;
+                        players[inputPacket.playerID].size = inputPacket.size;
+                        players[inputPacket.playerID].currentGun = inputPacket.currentGun;
+                        if (inputPacket.shoot) ShootProjectile(&projectiles, players, inputPacket.playerID);
+                        break;
+                    }
                 default:
                     break;
             }
         }
         else {
-	        double currentTimestamp = gettimestamp();
+            double currentTimestamp = gettimestamp();
             static double previousTimestamp = 0.0f;
 
             tickTime = currentTimestamp - previousTimestamp;
@@ -287,4 +264,6 @@ void main() {
     }
 
     socketClose(socket_fd);
+
+    return 0;
 }
