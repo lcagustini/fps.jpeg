@@ -12,10 +12,6 @@ typedef struct {
     float health;
 } ServerPlayer;
 
-Model mapModel;
-Model playerModel;
-float tickTime;
-
 float GetGunTypeDamage(GunType type) {
     switch (type) {
         case GUN_BULLET:
@@ -159,10 +155,6 @@ void *serverMain(void *args) {
     } else {
         fprintf(stderr, "Bound file descriptor to socket.\n");
     }
-
-    //InitWindow(200, 200, "server.jpeg");
-    mapModel = LoadModel("assets/map2.obj");
-    playerModel = LoadModel("assets/human.obj");
 
     ServerPlayer players[MAX_PLAYERS] = {0};
     Projectiles projectiles = {0};

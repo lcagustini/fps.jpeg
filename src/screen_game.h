@@ -1,6 +1,6 @@
 GameScreen gameMain() {
     World world = {
-        .map = LoadModel("assets/map2.obj"),
+        .map = mapModel,
         .lights = {
             .lightsLenLoc = GetShaderLocation(shader, "lightsLen"),
             .lightsPositionLoc = GetShaderLocation(shader, "lightsPosition"),

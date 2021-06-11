@@ -32,11 +32,15 @@ typedef int SOCKET;
 #include "physics.h"
 #include "common.h"
 
-#include "server.h"
+Model mapModel;
+Model playerModel;
+float tickTime;
 
 Shader shader;
 int localPlayerID = -1;
 GameScreen currentScreen;
+
+#include "server.h"
 
 void MovePlayer(Model mapModel, Player *player) {
     static Vector2 previousMousePosition = { 0.0f, 0.0f };
@@ -209,6 +213,10 @@ int main(void) {
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     //SetConfigFlags(FLAG_FULLSCREEN_MODE);
     SetTargetFPS(GetMonitorRefreshRate(0));
+
+    mapModel = LoadModel("assets/map2.obj");
+    playerModel = LoadModel("assets/human.obj");
+    puts("Loaded models!");
 
     shader = LoadShader("shaders/lighting.vs", "shaders/lighting.fs");
     shader.locs[SHADER_LOC_VECTOR_VIEW] = GetShaderLocation(shader, "viewPos");

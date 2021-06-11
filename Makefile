@@ -4,7 +4,8 @@ CC = gcc
 INCLUDE = $(shell find src/ -type f -name '*.h')
 
 SRCS = $(shell find src/ -type f -name '*.c')
-CFLAGS = -Wall -Os -s
+#CFLAGS = -Wall -Os -s
+CFLAGS = -Wall -Og -g
 
 LIBDIR = $(shell find lib/ -type f -name '*.a')
 LIBS = -lm -ldl -lpthread
