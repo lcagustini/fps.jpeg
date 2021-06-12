@@ -125,6 +125,10 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
 
 void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (memcmp(&players[i].client_address, &client, sizeof(client)) == 0) return;
+    }
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
         if (players[i].isActive) continue;
 
         memset(&players[i], 0, sizeof(ServerPlayer));
@@ -137,7 +141,7 @@ void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
     }
 }
 
-int serverMain() {
+void *serverMain(void *args) {
     socketInit();
 
     SOCKET socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -264,6 +268,4 @@ int serverMain() {
     }
 
     socketClose(socket_fd);
-
-    return 0;
 }

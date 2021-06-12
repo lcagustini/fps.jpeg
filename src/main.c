@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 typedef int SOCKET;
+#include <pthread.h>
 
 #else
 
@@ -226,11 +227,6 @@ int main(void) {
         }
     };
 
-    //SetupWorld(&world);
-    for (int i = 0; i < MAX_PLAYERS; i++) {
-        //SetupPlayer(&world.players[i]);
-    }
-
     int timeLoc = GetShaderLocation(shader, "time");
     int isMapLoc = GetShaderLocation(shader, "isMap");
 
@@ -272,8 +268,10 @@ int main(void) {
         EndDrawing();
     }
 
-    JoinPacket joinPacket = { PACKET_JOIN };
-    sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+    SetupWorld(&world);
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        SetupPlayer(&world.players[i]);
+    }
 
 
     while (!WindowShouldClose()) {
@@ -344,7 +342,14 @@ int main(void) {
             }
         }
 
-        if (localPlayerID == -1) continue;
+        if (localPlayerID == -1) {
+            JoinPacket joinPacket = { PACKET_JOIN };
+            sendto(socket_fd, &joinPacket, sizeof(joinPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+
+            usleep(100);
+
+            continue;
+        }
 
         MovePlayer(world.map, &world.players[localPlayerID]);
 
@@ -377,7 +382,7 @@ int main(void) {
         float timestamp = gettimestamp();
         double integral;
         timestamp = modf(timestamp, &integral) * 10;
-        printf("timestamp = %lf\n", timestamp);
+        //printf("timestamp = %lf\n", timestamp);
 
         SetShaderValue(shader, timeLoc, &timestamp, SHADER_UNIFORM_FLOAT);
 
