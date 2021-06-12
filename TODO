@@ -1,0 +1,22 @@
+Essential:
+- Death / Respawn
+
+New features:
+- Tab to check who's online and frags
+- New weapon types
+- Enhance visuals (lighting, textures, normal mapping, hitscan visuals, shadows, etc)
+- Bigger map
+- Animations
+- Double jump / Jetpack / Grappling hook
+- Random weapon spawn locations / Weapon pick-up system
+- Chat (with connect/disconnect messages)
+- Kill feed
+- Audio
+
+Maintenance:
+- Fix game crashing on close
+- Fix discrete collision with pseudo binary search
+- Interpolate player/projectile position
+- Fix windows issues
+
+- Reduce binary size
