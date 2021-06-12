@@ -39,6 +39,10 @@ float tickTime;
 Shader shader;
 int localPlayerID = -1;
 GameScreen currentScreen;
+pthread_t serverThread;
+
+char serverAddress[20] = "127.0.0.1";
+int serverPort = 20586;
 
 #include "server.h"
 

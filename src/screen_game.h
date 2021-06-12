@@ -24,8 +24,8 @@ GameScreen gameMain() {
 
     struct sockaddr_in server_address = {0};
     server_address.sin_family = AF_INET;
-    server_address.sin_port = htons(20586);
-    inet_pton(AF_INET, SERVER_ADDR, &server_address.sin_addr.s_addr);
+    server_address.sin_port = htons(serverPort);
+    inet_pton(AF_INET, serverAddress, &server_address.sin_addr.s_addr);
 
     SetupWorld(&world);
     for (int i = 0; i < MAX_PLAYERS; i++) {

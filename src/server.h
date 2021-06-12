@@ -165,7 +165,7 @@ void *serverMain(void *args) {
     struct sockaddr_in server_address = {0};
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(20586);
-    inet_pton(AF_INET, SERVER_ADDR, &server_address.sin_addr.s_addr);
+    inet_pton(AF_INET, "0.0.0.0", &server_address.sin_addr.s_addr);
 
     if (bind(socket_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
         fprintf(stderr, "ERROR: Could not bind file descriptor to socket.\n");

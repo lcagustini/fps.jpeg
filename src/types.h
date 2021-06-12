@@ -24,8 +24,6 @@
 #define GRAVITY 3.0f
 #define KILL_PLANE -5.0f
 
-#define SERVER_ADDR "127.0.0.1"
-
 typedef enum {
     SCREEN_CLOSE,
     SCREEN_LOBBY,
