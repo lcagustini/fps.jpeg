@@ -21,6 +21,9 @@
 
 #define WORLD_UP_VECTOR (Vector3) {0.0f, 1.0f, 0.0f}
 
+#define GRAVITY 3.0f
+#define KILL_PLANE -5.0f
+
 #define SERVER_ADDR "127.0.0.1"
 
 typedef enum {
@@ -78,6 +81,7 @@ typedef struct {
 typedef enum {
     PROJECTILE_GRENADE,
     PROJECTILE_EXPLOSION,
+    PROJECTILE_JUMP_JUMP_BALL,
 } ProjectileType;
 
 typedef struct {

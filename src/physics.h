@@ -305,8 +305,8 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 	return true;
 }
 
-// TODO: use velocity also for other ResponseTypes?, currently only working for SLIDE
-Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxType hitbox, float radius, CollisionResponseType response, Vector3 *velocity) {
+// TODO: use output velocity/normal also for other ResponseTypes?, currently only working for BOUNCE
+Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxType hitbox, float radius, CollisionResponseType response, Vector3 *velocity, Vector3 *hitNormal) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -321,9 +321,6 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
             Vector3 normal3 = { mapModel.meshes[i].normals[j+6], mapModel.meshes[i].normals[j+7], mapModel.meshes[i].normals[j+8]};
             Vector3 normal = Vector3Normalize(Vector3Add(normal1, Vector3Add(normal2, normal3)));
 
-            // TODO: might cause problems when falling close to "boxes"
-            if (Vector3DotProduct(normal, WORLD_UP_VECTOR) > 0.1f) continue;
-
             bool intersects = false;
             if (hitbox == HITBOX_AABB) {
                 Vector3 aabb_radius = (Vector3) {radius, radius, radius};
@@ -334,23 +331,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
             } else if (hitbox == HITBOX_SPHERE) {
                 intersects = sphereCollidesTriangle(nextPos, radius, vertex1, vertex2, vertex3);
             }
-#if 0
-                // collision response
-                Vector3 dir = Vector3Subtract(nextPos, curPos);
-                float comp1 = Vector3DotProduct(dir, normal);
-                Vector3 perp = Vector3Normalize(Vector3CrossProduct(normal, WORLD_UP_VECTOR));
-                float comp2 = Vector3DotProduct(dir, perp);
 
-                Vector3 rebound = Vector3Add(curPos, Vector3Add(Vector3Scale(perp, comp2), Vector3Scale(rebounds[i][4], MAX(comp1, 0.0f))));
-
-                //printf("collided, size: %f", Vector3Length(Vector3Subtract(nextPos, curPos)));
-                //printf("collided, size: %f", Vector3Length(penetration));
-
-                nextPos = rebound;
-            }
-        }
-    }
-#else
             if (intersects) {
                 float projection = Vector3DotProduct(Vector3Subtract(nextPos, vertex1), normal);
 
@@ -419,13 +400,17 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
             } else if (response == COLLIDE_AND_BOUNCE) {
                 assert(velocity);
                 rebound = Vector3Subtract(*velocity, Vector3Scale(normal, 2 * Vector3DotProduct(*velocity, normal)));
+
+                assert(velocity);
+                assert(hitNormal);
                 *velocity = rebound;
+                *hitNormal = normal;
+
                 rebound = Vector3Add(curPos, Vector3Scale(rebound, GetFrameTime()));
             }
         }
         nextPos = rebound;
     }
-#endif
 
     // hack to prevent going out of bounds by shoving head into corners
     if (Vector3Length(Vector3Subtract(nextPos, curPos)) < 0.004f) return curPos;
@@ -433,22 +418,23 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
     return nextPos;
 }
 
-Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vector3 *velocity, bool *grounded) {
+Vector3 GetGroundNormal(Model mapModel, Vector3 position) {
+    Ray ray = {
+        .position = position,
+        .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
+    };
+    RayCollision hit = GetRayCollisionModel(ray, mapModel);
+    return hit.normal;
+}
+
+Vector3 PlayerCollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vector3 *velocity, bool *grounded) {
     Ray ray = {
         .position = nextPos,
         .direction = (Vector3) { 0.0f, -1.0f, 0.0f }
     };
-#if 0
-    RayHitInfo hit = GetCollisionRayModel(ray, mapModel);
-#else
     RayCollision hit = GetRayCollisionModel(ray, mapModel);
-#endif
     if (hit.hit && hit.distance < radius) {
-#if 0
-        nextPos = Vector3Add(hit.position, Vector3Scale(WORLD_UP_VECTOR, radius));
-#else
         nextPos = Vector3Add(hit.point, Vector3Scale(WORLD_UP_VECTOR, radius));
-#endif
         *grounded = true;
         velocity->y = 0;
     } else {
@@ -456,12 +442,5 @@ Vector3 CollideWithMapGravity(Model mapModel, Vector3 nextPos, float radius, Vec
     }
 
     return nextPos;
-}
-
-void ApplyGravity(Model mapModel, Vector3 *position, float radius, Vector3 *velocity, bool *grounded) {
-    *velocity = Vector3Subtract(*velocity, (Vector3) {0.0f, 3.0f * GetFrameTime(), 0.0f});
-    Vector3 nextPos = *position;
-    nextPos.y += velocity->y * GetFrameTime();
-    *position = CollideWithMapGravity(mapModel, nextPos, radius, velocity, grounded);
 }
 

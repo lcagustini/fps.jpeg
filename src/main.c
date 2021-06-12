@@ -69,29 +69,26 @@ void MovePlayer(Model mapModel, Player *player) {
             sinf(player->cameraFPS.angle.x) * inputs[MOVE_LEFT] -
             sinf(player->cameraFPS.angle.x) * inputs[MOVE_RIGHT]) / PLAYER_MOVEMENT_SENSITIVITY;
 
-    // TODO: this whole code won't work with ceilings, we need to integrate gravity with CollideWithMap()
-
-    Vector3 frameMovement = {0};
-    frameMovement.x = deltaX * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
-    frameMovement.z = deltaZ * GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY;
-
+    // Current player velocity based on previous Y velocity and movement input
+    Vector3 groundNormal = GetGroundNormal(mapModel, player->position);
+    float speedAttenuationFactor = Vector3DotProduct(groundNormal, WORLD_UP_VECTOR);
+    Vector3 frameMovement = { deltaX, 0, deltaZ };
     float tmpVelY = player->velocity.y;
     player->velocity.y = 0.0f;
-    player->velocity = Vector3Scale(Vector3Normalize(frameMovement), GetFrameTime() / PLAYER_MOVEMENT_SENSITIVITY);
+    player->velocity = Vector3Scale(Vector3Normalize(frameMovement), speedAttenuationFactor / PLAYER_MOVEMENT_SENSITIVITY);
     player->velocity.y = tmpVelY;
 
+    // Jump if on the ground
     if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
         player->grounded = false;
         player->velocity.y = 3.0f;
     }
 
-    ApplyGravity(mapModel, &player->position, player->size.y, &player->velocity, &player->grounded);
-
-    tmpVelY = player->velocity.y;
-    player->velocity.y = 0.0f;
-    Vector3 nextPos = Vector3Add(player->position, player->velocity);
-    player->position = CollideWithMap(mapModel, player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL);
-    player->velocity.y = tmpVelY;
+    // Apply gravity and collide with map/ground
+    Vector3 nextPos = Vector3Add(player->position, Vector3Scale(player->velocity, GetFrameTime()));
+    player->velocity = Vector3Subtract(player->velocity, (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
+    nextPos = PlayerCollideWithMapGravity(mapModel, nextPos, player->size.y, &player->velocity, &player->grounded);
+    player->position = CollideWithMap(mapModel, player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL, NULL);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);
@@ -115,7 +112,25 @@ void MovePlayer(Model mapModel, Player *player) {
 void DrawProjectiles(NetworkProjectile *projectiles, int len) {
     for (int i = 0; i < len; i++) {
         // TODO: maybe use DrawSphereEx to draw a sphere with less slices if performance becomes a concern
-        DrawSphere(projectiles[i].position, projectiles[i].radius, YELLOW);
+
+        switch (projectiles[i].type) {
+            case PROJECTILE_GRENADE:
+            {
+                DrawSphere(projectiles[i].position, projectiles[i].radius, YELLOW);
+            } break;
+            case PROJECTILE_JUMP_JUMP_BALL:
+            {
+                DrawSphere(projectiles[i].position, projectiles[i].radius, GREEN);
+            } break;
+            case PROJECTILE_EXPLOSION:
+            {
+                DrawSphere(projectiles[i].position, projectiles[i].radius, RED);
+            } break;
+            default:
+            {
+                assert(false);
+            } break;
+        }
     }
 }
 

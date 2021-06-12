@@ -48,7 +48,7 @@ void ShootProjectile(Projectiles *projectiles, ServerPlayer players[MAX_PLAYERS]
                 float projSpeed = 12.0f;
                 float radius = 0.1f;
 
-                AddProjectile(projectiles, eyePosition, Vector3Scale(dir, projSpeed), radius, PROJECTILE_GRENADE, ownerID);
+                AddProjectile(projectiles, eyePosition, Vector3Scale(dir, projSpeed), radius, PROJECTILE_JUMP_JUMP_BALL, ownerID);
                 //printf("dir: %f,%f,%f\n", dir.x, dir.y, dir.z);
             }
             break;
@@ -88,32 +88,49 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
     for (int i = 0; i < projectiles->count; i++) {
         projectiles->lifetime[i] += tickTime;
 
-        // FIXME: dirty hack, we should fix how we add Y to position
-        float tmpVelY = projectiles->velocity[i].y;
-        projectiles->velocity[i].y = 0.0f;
         Vector3 nextPos = Vector3Add(projectiles->position[i], Vector3Scale(projectiles->velocity[i], tickTime));
-        projectiles->velocity[i].y = tmpVelY;
-
-        projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i]);
 
         bool delete = false;
-        bool grounded = false;
 
-        if (projectiles->type[i] == PROJECTILE_GRENADE) {
-            ApplyGravity(mapModel, &projectiles->position[i], projectiles->radius[i], &projectiles->velocity[i], &grounded);
+        switch (projectiles->type[i]) {
+            case PROJECTILE_GRENADE:
+            {
+                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
+
+                Vector3 hitNormal = Vector3Zero();
+                projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
+
+                /* if it hit the ground */
+                if (Vector3DotProduct(hitNormal, WORLD_UP_VECTOR) > 0.5f) {
+                    AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 2.0f, PROJECTILE_EXPLOSION, projectiles->owners[i]);
+                    delete = true;
+                }
+            } break;
+            case PROJECTILE_JUMP_JUMP_BALL:
+            {
+                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
+
+                Vector3 hitNormal = Vector3Zero();
+                projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
+
+                if (projectiles->lifetime[i] > 3.0f) {
+                    AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 5.0f, PROJECTILE_EXPLOSION, projectiles->owners[i]);
+                    delete = true;
+                }
+            } break;
+            case PROJECTILE_EXPLOSION:
+            {
+                if (projectiles->lifetime[i] > 1.0f) {
+                    delete = true;
+                }
+            } break;
+            default:
+            {
+                assert(false);
+            } break;
         }
 
-        if (grounded) {
-            assert(projectiles->type[i] != PROJECTILE_EXPLOSION);
-            AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 2.0f, PROJECTILE_EXPLOSION, projectiles->owners[i]);
-            delete = true;
-        }
-
-        if (projectiles->type[i] == PROJECTILE_EXPLOSION && projectiles->lifetime[i] > 1.0f) {
-            delete = true;
-        }
-
-        if (delete) {
+        if (delete || projectiles->position[i].y < KILL_PLANE) {
             DeleteProjectile(projectiles, i--);
         }
     }
