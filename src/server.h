@@ -240,7 +240,7 @@ void *serverMain(void *args) {
             //printf("%f\n", tickTime);
 
             //TODO: rethink this sleep
-            usleep(1000000.0f / TICKS_PER_SEC);
+            usleep(1000000 / TICKS_PER_SEC);
 
             UpdateProjectiles(mapModel, &projectiles);
 

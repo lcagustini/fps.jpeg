@@ -150,12 +150,12 @@ GameScreen gameMain() {
 
         BeginMode3D(world.players[localPlayerID].cameraFPS.camera);
 
-        float timestamp = gettimestamp();
+        double timestamp = gettimestamp();
         double integral;
-        timestamp = modf(timestamp, &integral) * 10;
-        //printf("timestamp = %lf\n", timestamp);
+        float ftimestamp = modf(timestamp, &integral) * 10;
+        printf("timestamp = %f\n", ftimestamp);
 
-        SetShaderValue(shader, timeLoc, &timestamp, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, timeLoc, &ftimestamp, SHADER_UNIFORM_FLOAT);
 
         // section UV[0..0.5][0..0.5] is a procedurally generated wall texture
         int isMap = 1;
