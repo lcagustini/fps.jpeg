@@ -306,7 +306,7 @@ bool triangleAABBIntersects(Vector3 aabb_min, Vector3 aabb_max, Vector3 a, Vecto
 }
 
 // TODO: use output velocity/normal also for other ResponseTypes?, currently only working for BOUNCE
-Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxType hitbox, float radius, CollisionResponseType response, Vector3 *velocity, Vector3 *hitNormal) {
+Vector3 CollideWithMap(Model mapModel, float dt, Vector3 curPos, Vector3 nextPos, HitboxType hitbox, float radius, CollisionResponseType response, Vector3 *velocity, Vector3 *hitNormal) {
     int reboundLen = 0;
     Vector3 rebounds[100][5];
 
@@ -406,7 +406,7 @@ Vector3 CollideWithMap(Model mapModel, Vector3 curPos, Vector3 nextPos, HitboxTy
                 *velocity = rebound;
                 *hitNormal = normal;
 
-                rebound = Vector3Add(curPos, Vector3Scale(rebound, GetFrameTime()));
+                rebound = Vector3Add(curPos, Vector3Scale(rebound, dt));
             }
         }
         nextPos = rebound;

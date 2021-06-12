@@ -32,11 +32,21 @@ GameScreen gameMain() {
         SetupPlayer(&world.players[i]);
     }
 
+    // network metrics
+    int netPacketCount = 0;
+    int netBytes = 0;
+    float netTimeElapsed = 0.0f;
+    float drawNetMetricsTime = 0.0f;
+    char metricsStr[1000] = {0};
+
     while (!WindowShouldClose()) {
         while (true) {
             PacketType type;
             int ret = peekPacket(socket_fd, &server_address, &type, NULL);
             if (ret <= 0) break;
+
+            netPacketCount++;
+            netBytes += ret;
 
             checkClientState();
 
@@ -109,6 +119,9 @@ GameScreen gameMain() {
             continue;
         }
 
+        netTimeElapsed += GetFrameTime();
+        drawNetMetricsTime += GetFrameTime();
+
         MovePlayer(world.map, &world.players[localPlayerID]);
 
         //TODO: limit send rate
@@ -164,14 +177,24 @@ GameScreen gameMain() {
 
         EndMode3D();
 
+        // wireframes
         for (int i = 0; i < MAX_PLAYERS; i++) {
             if (!world.players[i].isActive) continue;
 
             DrawRectangleGradientH(10, i * 25 + 10, 20 * world.players[i].health, 20, RED, GREEN);
         }
 
+        // crosshair
         DrawLine(GetScreenWidth() / 2 - 6, GetScreenHeight() / 2, GetScreenWidth() / 2 + 5, GetScreenHeight() / 2, MAGENTA);
         DrawLine(GetScreenWidth() / 2, GetScreenHeight() / 2 - 6, GetScreenWidth() / 2, GetScreenHeight() / 2 + 5, MAGENTA);
+
+
+        // network metrics
+        if (drawNetMetricsTime > 4.0f) {
+            sprintf(metricsStr, "Received %d packets with %d bytes. (%.02f bytes/sec)", netPacketCount, netBytes, netBytes / netTimeElapsed);
+            drawNetMetricsTime = 0.0f;
+        }
+        DrawText(metricsStr, GetScreenWidth() - 500, GetScreenHeight() - 20, 16, MAGENTA);
 
         EndDrawing();
     }

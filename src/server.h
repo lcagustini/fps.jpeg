@@ -95,10 +95,10 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
         switch (projectiles->type[i]) {
             case PROJECTILE_GRENADE:
             {
-                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
+                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * tickTime, 0.0f});
 
                 Vector3 hitNormal = Vector3Zero();
-                projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
+                projectiles->position[i] = CollideWithMap(mapModel, tickTime, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
 
                 /* if it hit the ground */
                 if (Vector3DotProduct(hitNormal, WORLD_UP_VECTOR) > 0.5f) {
@@ -108,10 +108,10 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
             } break;
             case PROJECTILE_JUMP_JUMP_BALL:
             {
-                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
+                projectiles->velocity[i] = Vector3Subtract(projectiles->velocity[i], (Vector3) {0.0f, GRAVITY * tickTime, 0.0f});
 
                 Vector3 hitNormal = Vector3Zero();
-                projectiles->position[i] = CollideWithMap(mapModel, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
+                projectiles->position[i] = CollideWithMap(mapModel, tickTime, projectiles->position[i], nextPos, HITBOX_SPHERE, projectiles->radius[i], COLLIDE_AND_BOUNCE, &projectiles->velocity[i], &hitNormal);
 
                 if (projectiles->lifetime[i] > 3.0f) {
                     AddProjectile(projectiles, projectiles->position[i], Vector3Zero(), 5.0f, PROJECTILE_EXPLOSION, projectiles->owners[i]);
@@ -240,7 +240,7 @@ void *serverMain(void *args) {
             //printf("%f\n", tickTime);
 
             //TODO: rethink this sleep
-            usleep(1000);
+            usleep(1000000.0f / TICKS_PER_SEC);
 
             UpdateProjectiles(mapModel, &projectiles);
 

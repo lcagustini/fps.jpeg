@@ -92,7 +92,7 @@ void MovePlayer(Model mapModel, Player *player) {
     Vector3 nextPos = Vector3Add(player->position, Vector3Scale(player->velocity, GetFrameTime()));
     player->velocity = Vector3Subtract(player->velocity, (Vector3) {0.0f, GRAVITY * GetFrameTime(), 0.0f});
     nextPos = PlayerCollideWithMapGravity(mapModel, nextPos, player->size.y, &player->velocity, &player->grounded);
-    player->position = CollideWithMap(mapModel, player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL, NULL);
+    player->position = CollideWithMap(mapModel, GetFrameTime(), player->position, nextPos, HITBOX_AABB, player->size.x, COLLIDE_AND_SLIDE, NULL, NULL);
 
     // Camera orientation calculation
     player->cameraFPS.angle.x += (mousePositionDelta.x * -CAMERA_MOUSE_MOVE_SENSITIVITY);

@@ -24,6 +24,8 @@
 #define GRAVITY 3.0f
 #define KILL_PLANE -5.0f
 
+#define TICKS_PER_SEC 64
+
 typedef enum {
     SCREEN_CLOSE,
     SCREEN_LOBBY,
