@@ -10,6 +10,12 @@ typedef struct {
     GunType currentGun;
 
     float health;
+
+    int pingId;
+    float timeSincePing;
+    bool didPong;
+    float pingFailures; /* in a row */
+    int lastPing;
 } ServerPlayer;
 
 float GetGunTypeDamage(GunType type) {
@@ -138,7 +144,7 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
 
 void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
     for (int i = 0; i < MAX_PLAYERS; i++) {
-        if (memcmp(&players[i].client_address, &client, sizeof(client)) == 0) return;
+        if (players[i].isActive && memcmp(&players[i].client_address, &client, sizeof(client)) == 0) return;
     }
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -151,6 +157,25 @@ void AddPlayer(ServerPlayer players[MAX_PLAYERS], struct sockaddr_in client) {
         players[i].health = MAX_HEALTH;
 
         return;
+    }
+}
+
+void SendPlayerListPacket(SOCKET socket_fd, ServerPlayer players[MAX_PLAYERS]) {
+    PlayerListPacket playerListPacket;
+    playerListPacket.type = PACKET_PLAYER_LIST;
+    playerListPacket.allIdsLen = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (players[i].isActive) {
+            playerListPacket.allIds[playerListPacket.allIdsLen++] = i;
+        }
+    }
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (players[i].isActive) {
+            playerListPacket.clientId = i;
+            int err = sendto(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, (struct sockaddr*)&players[i].client_address, sizeof(players[i].client_address));
+            //printf("len = %d, err = %d\n", sizeof(playerListPacket), err);
+        }
     }
 }
 
@@ -196,22 +221,7 @@ void *serverMain(void *args) {
 
                         AddPlayer(players, client_address);
 
-                        PlayerListPacket playerListPacket;
-                        playerListPacket.type = PACKET_PLAYER_LIST;
-                        playerListPacket.allIdsLen = 0;
-                        for (int i = 0; i < MAX_PLAYERS; i++) {
-                            if (players[i].isActive) {
-                                playerListPacket.allIds[playerListPacket.allIdsLen++] = i;
-                            }
-                        }
-
-                        for (int i = 0; i < MAX_PLAYERS; i++) {
-                            if (players[i].isActive) {
-                                playerListPacket.clientId = i;
-                                int err = sendto(socket_fd, &playerListPacket, sizeof(playerListPacket), 0, (struct sockaddr*)&players[i].client_address, len);
-                                //printf("len = %d, err = %d\n", sizeof(playerListPacket), err);
-                            }
-                        }
+                        SendPlayerListPacket(socket_fd, players);
                         break;
                     }
                 case PACKET_INPUT:
@@ -224,6 +234,16 @@ void *serverMain(void *args) {
                         players[inputPacket.playerID].size = inputPacket.size;
                         players[inputPacket.playerID].currentGun = inputPacket.currentGun;
                         if (inputPacket.shoot) ShootProjectile(&projectiles, players, inputPacket.playerID);
+                        break;
+                    }
+                case PACKET_PING:
+                    {
+                        PingPacket pingPacket = { 0 };
+                        recvfrom(socket_fd, &pingPacket, sizeof(pingPacket), 0, (struct sockaddr*)&client_address, &len);
+                        if (pingPacket.pingId == players[pingPacket.playerId].pingId) {
+                            players[pingPacket.playerId].didPong = true;
+                            players[pingPacket.playerId].lastPing = players[pingPacket.playerId].timeSincePing;
+                        }
                         break;
                     }
                 default:
@@ -273,6 +293,33 @@ void *serverMain(void *args) {
                 }
             }
             free(projectilesPacket);
+
+            // ping
+            PingPacket pingPacket = { PACKET_PING };
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (!players[i].isActive) continue;
+
+                players[i].timeSincePing += tickTime * 1000;
+                if (players[i].timeSincePing > PING_INTERVAL_MS) {
+                    if (players[i].didPong) {
+                        players[i].pingFailures = 0;
+                    } else {
+                        players[i].pingFailures++;
+                        if (players[i].pingFailures >= PING_DISCONNECT_THRESHOLD) {
+                            players[i].isActive = false;
+                            SendPlayerListPacket(socket_fd, players);
+                            continue;
+                        }
+                    }
+                    pingPacket.playerId = i;
+                    pingPacket.pingId = rand();
+                    players[i].pingId = pingPacket.pingId;
+                    players[i].timeSincePing = 0.0f;
+                    players[i].didPong = false;
+                    pingPacket.lastPing = players[i].lastPing;
+                    sendto(socket_fd, &pingPacket, sizeof(pingPacket), 0, (struct sockaddr *)&players[i].client_address, len);
+                }
+            }
         }
     }
 

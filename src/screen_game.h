@@ -38,6 +38,7 @@ GameScreen gameMain() {
     float netTimeElapsed = 0.0f;
     float drawNetMetricsTime = 0.0f;
     char metricsStr[1000] = {0};
+    int pingInMs = 0;
 
     while (!WindowShouldClose()) {
         while (true) {
@@ -104,6 +105,13 @@ GameScreen gameMain() {
                         free(projectilesPacket);
                     }
                     break;
+                case PACKET_PING:
+                    {
+                        PingPacket pingPacket = { 0 };
+                        recvfrom(socket_fd, &pingPacket, sizeof(pingPacket), 0, (struct sockaddr*)&server_address, &inbound_addr_len);
+                        pingInMs = pingPacket.lastPing;
+                        sendto(socket_fd, &pingPacket, sizeof(pingPacket), 0, (struct sockaddr *)&server_address, sizeof(server_address));
+                    } break;
                 default:
                     //if (type != 0) printf("got %d\n", type);
                     break;
@@ -153,7 +161,7 @@ GameScreen gameMain() {
         double timestamp = gettimestamp();
         double integral;
         float ftimestamp = modf(timestamp, &integral) * 10;
-        printf("timestamp = %f\n", ftimestamp);
+        //printf("timestamp = %f\n", ftimestamp);
 
         SetShaderValue(shader, timeLoc, &ftimestamp, SHADER_UNIFORM_FLOAT);
 
@@ -194,7 +202,12 @@ GameScreen gameMain() {
             sprintf(metricsStr, "Received %d packets with %d bytes. (%.02f bytes/sec)", netPacketCount, netBytes, netBytes / netTimeElapsed);
             drawNetMetricsTime = 0.0f;
         }
-        DrawText(metricsStr, GetScreenWidth() - 500, GetScreenHeight() - 20, 16, MAGENTA);
+        DrawText(metricsStr, 10, GetScreenHeight() - 20, 16, GREEN);
+
+        // ping
+        char pingStr[100] = {0};
+        sprintf(pingStr, "Ping: %d ms\n", pingInMs);
+        DrawText(pingStr, 10, GetScreenHeight() - 40, 16, GREEN);
 
         EndDrawing();
     }

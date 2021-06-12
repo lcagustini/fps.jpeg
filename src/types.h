@@ -26,6 +26,9 @@
 
 #define TICKS_PER_SEC 64
 
+#define PING_INTERVAL_MS 1000.0f
+#define PING_DISCONNECT_THRESHOLD 3
+
 typedef enum {
     SCREEN_CLOSE,
     SCREEN_LOBBY,
@@ -141,6 +144,8 @@ typedef enum {
 
     PACKET_JOIN,
     PACKET_PLAYER_LIST,
+
+    PACKET_PING,
 } PacketType;
 
 typedef struct {
@@ -185,3 +190,12 @@ typedef struct {
 
     int clientId;
 } PlayerListPacket;
+
+typedef struct {
+    PacketType type;
+
+    int playerId;
+
+    int pingId;
+    int lastPing; /* server-to-player only */
+} PingPacket;
