@@ -7,6 +7,7 @@
 #define CAMERA_FIRST_PERSON_WAVING_DIVIDER              200.0f
 
 #define PLAYER_MOVEMENT_SENSITIVITY                     0.25f
+#define PLAYER_JUMP_FORCE                               4.50f
 
 #define CAMERA_MOUSE_MOVE_SENSITIVITY                   0.003f
 #define CAMERA_MOUSE_SCROLL_SENSITIVITY                 1.5f

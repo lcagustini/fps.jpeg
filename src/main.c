@@ -85,7 +85,7 @@ void MovePlayer(Model mapModel, Player *player) {
     // Jump if on the ground
     if (player->grounded && IsKeyDown(player->inputBindings[MOVE_JUMP])) {
         player->grounded = false;
-        player->velocity.y = 3.0f;
+        player->velocity.y = PLAYER_JUMP_FORCE;
     }
 
     // Apply gravity and collide with map/ground
