@@ -24,6 +24,7 @@
 #define SERVER_ADDR "127.0.0.1"
 
 typedef enum {
+    SCREEN_CLOSE,
     SCREEN_LOBBY,
     SCREEN_GAME,
 } GameScreen;
