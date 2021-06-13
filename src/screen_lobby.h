@@ -12,7 +12,7 @@ GameScreen lobbyMain() {
 
         if (GuiButton((Rectangle) { 10, 10, 215, 20 }, "Host")) {
             pthread_create(&serverThread, NULL, serverMain, NULL);
-            break;
+            return SCREEN_GAME;
         }
 
         if (GuiTextBox((Rectangle) { 10, 40, 100, 20 }, ipInput, 20, ipInputEdit)) ipInputEdit = !ipInputEdit;
@@ -21,11 +21,11 @@ GameScreen lobbyMain() {
             printf("Joining %s:%s\n", ipInput, portInput);
             strcpy(serverAddress, ipInput);
             serverPort = strtol(portInput, NULL, 10);
-            break;
+            return SCREEN_GAME;
         }
 
         EndDrawing();
     }
 
-    return SCREEN_GAME;
+    return SCREEN_CLOSE;
 }
