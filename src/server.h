@@ -324,4 +324,6 @@ void *serverMain(void *args) {
     }
 
     socketClose(socket_fd);
+
+    return NULL;
 }

@@ -1,4 +1,34 @@
 
+#ifdef _WIN32
+HANDLE serverThread;
+#else
+#include <pthread.h>
+pthread_t serverThread;
+#endif
+
+void *serverMain(void *data);
+
+#ifdef _WIN32
+DWORD WINAPI serverMain_windows(void *data) {
+    serverMain(data);
+    return 0;
+}
+#else
+void *serverMain_linux(void *data) {
+    serverMain(data);
+    return NULL;
+}
+#endif
+
+void startServerThread() {
+#ifdef _WIN32
+    serverThread = CreateThread(NULL, 0, serverMain_windows, NULL, 0, NULL);
+#else
+    pthread_create(&serverThread, NULL, serverMain_linux, NULL);
+#endif
+}
+
+
 double gettimestamp() {
 #ifdef _WIN32
     LARGE_INTEGER fq, t;
@@ -59,12 +89,12 @@ void setupSocket(SOCKET socket_fd) {
     u_long iMode = 1;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, &iMode, sizeof(int)) != NO_ERROR) {
         printf("Failed to set socket option.\n");
-        return 0;
+        return;
     }
     int iResult;
     if ((iResult = ioctlsocket(socket_fd, FIONBIO, &iMode)) != NO_ERROR) {
         printf("ioctlsocket failed with error: %ld\n", iResult);
-        return 0;
+        return;
     }
 #endif
 }
@@ -76,7 +106,7 @@ int peekPacket(SOCKET socket_fd, struct sockaddr_in *addr, PacketType *type, int
 
     // dirty hack for this to work on winsock
     int dgram[MAX_UDP_PACKET_SIZE / sizeof(int)] = { PACKET_ERROR };
-    int bytesRead = recvfrom(socket_fd, dgram, MAX_UDP_PACKET_SIZE, MSG_PEEK, (struct sockaddr *) addr, &tmp);
+    int bytesRead = recvfrom(socket_fd, &dgram[0], MAX_UDP_PACKET_SIZE, MSG_PEEK, (struct sockaddr *) addr, &tmp);
     //if (bytesRead != -1) printf("bytesRead = %d\n", bytesRead);
 
     if (dgram[0] == PACKET_PROJECTILES) {

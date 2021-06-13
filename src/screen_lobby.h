@@ -11,7 +11,7 @@ GameScreen lobbyMain() {
         GuiGrid((Rectangle) { 0, 0, GetScreenWidth(), GetScreenHeight() }, 20.0f, 2); // draw a fancy grid
 
         if (GuiButton((Rectangle) { 10, 10, 215, 20 }, "Host")) {
-            pthread_create(&serverThread, NULL, serverMain, NULL);
+	    startServerThread();
             return SCREEN_GAME;
         }
 
