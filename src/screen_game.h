@@ -85,6 +85,8 @@ GameScreen gameMain() {
                                     world.players[i].currentGun = SetupGun(statePacket.playersGuns[i]);
                                 }
                             }
+                            world.players[i].kills = statePacket.playersKills[i];
+                            world.players[i].deaths = statePacket.playersDeaths[i];
                             world.players[i].health = statePacket.playersHealth[i];
                         }
                     }
@@ -190,6 +192,10 @@ GameScreen gameMain() {
             if (!world.players[i].isActive) continue;
 
             DrawRectangleGradientH(10, i * 25 + 10, 20 * world.players[i].health, 20, RED, GREEN);
+
+            char kdStr[100] = {0};
+            sprintf(kdStr, "k: %d d: %d\n", world.players[i].kills, world.players[i].deaths);
+            DrawText(kdStr, 20 * MAX_HEALTH + 20, i * 25 + 10, 20, MAGENTA);
         }
 
         // crosshair

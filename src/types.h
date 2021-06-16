@@ -75,6 +75,9 @@ typedef struct {
 
     Gun currentGun;
 
+    int kills;
+    int deaths;
+
     float health;
     bool grounded;
 
@@ -169,6 +172,8 @@ typedef struct {
     Vector3 playersPositions[MAX_PLAYERS];
     Vector2 playersAngles[MAX_PLAYERS];
     GunType playersGuns[MAX_PLAYERS];
+    int playersKills[MAX_PLAYERS];
+    int playersDeaths[MAX_PLAYERS];
     float playersHealth[MAX_PLAYERS];
 } StatePacket;
 

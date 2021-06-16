@@ -11,6 +11,10 @@ typedef struct {
 
     float health;
 
+    int lastDamageID;
+    int kills;
+    int deaths;
+
     int pingId;
     float timeSincePing;
     bool didPong;
@@ -23,7 +27,7 @@ float GetGunTypeDamage(GunType type) {
         case GUN_BULLET:
             return 0.3f;
         case GUN_GRENADE:
-            return 0.3f;
+            return 0.05f;
         default:
             return 0.0f;
     }
@@ -72,6 +76,7 @@ void ShootProjectile(Projectiles *projectiles, ServerPlayer players[MAX_PLAYERS]
                         if (mapHitInfo.hit && mapHitInfo.distance < playerHitInfo.distance) break;
 
                         players[i].health -= GetGunTypeDamage(GUN_BULLET);
+                        players[i].lastDamageID = ownerID;
                     }
                 }
             }
@@ -90,7 +95,7 @@ void DeleteProjectile(Projectiles* projectiles, int index) {
     }
 }
 
-void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
+void UpdateProjectiles(Model mapModel, Projectiles* projectiles, ServerPlayer players[MAX_PLAYERS]) {
     for (int i = 0; i < projectiles->count; i++) {
         projectiles->lifetime[i] += tickTime;
 
@@ -126,7 +131,19 @@ void UpdateProjectiles(Model mapModel, Projectiles* projectiles) {
             } break;
             case PROJECTILE_EXPLOSION:
             {
-                if (projectiles->lifetime[i] > 1.0f) {
+                projectiles->radius[i] = projectiles->lifetime[i] * 10.0f;
+
+                for (int i = 0; i < MAX_PLAYERS; i++) {
+                    if (!players[i].isActive) continue;
+
+                    BoundingBox bb = { Vector3Add(players[i].position, players[i].size), Vector3Subtract(players[i].position, players[i].size) };
+                    if (CheckCollisionBoxSphere(bb, projectiles->position[i], projectiles->radius[i])) {
+                        players[i].lastDamageID = projectiles->owners[i];
+                        players[i].health -= GetGunTypeDamage(GUN_GRENADE);
+                    }
+                }
+
+                if (projectiles->lifetime[i] > 0.5f) {
                     delete = true;
                 }
             } break;
@@ -262,13 +279,26 @@ void *serverMain(void *args) {
             //TODO: rethink this sleep
             usleep(1000000 / TICKS_PER_SEC);
 
-            UpdateProjectiles(mapModel, &projectiles);
+            UpdateProjectiles(mapModel, &projectiles, players);
+
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (!players[i].isActive) continue;
+
+                if (players[i].health <= 0) {
+                    players[i].health = MAX_HEALTH;
+                    players[i].deaths++;
+                    if (players[i].lastDamageID == i) players[i].kills--;
+                    else players[players[i].lastDamageID].kills++;
+                }
+            }
 
             StatePacket statePacket = { PACKET_STATE };
             for (int i = 0; i < MAX_PLAYERS; i++) {
                 statePacket.playersPositions[i] = players[i].position;
                 statePacket.playersAngles[i] = players[i].angle;
                 statePacket.playersGuns[i] = players[i].currentGun;
+                statePacket.playersKills[i] = players[i].kills;
+                statePacket.playersDeaths[i] = players[i].deaths;
                 statePacket.playersHealth[i] = players[i].health;
             }
             for (int i = 0; i < MAX_PLAYERS; i++) {
